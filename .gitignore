@@ -1,7 +1,9 @@
 token.txt
 images/cache/*
+images/perma/*
+images/avatars/transcoded/*
 audio/yt/*
-audio/47.*
+audio/join/*
 node_modules/*
 **/Thumbs.db
 subs.srt
@@ -23,3 +25,5 @@ dave.txt
 lastdrink.txt
 dist
 autostatus.json
+.vscode
+track/*
