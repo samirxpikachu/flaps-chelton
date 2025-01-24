@@ -7,13 +7,14 @@ import {
 } from "../types";
 import { question } from "./ai/question";
 import stablediffusion from "./ai/stablediffusion";
-import { bufferToDataURL, dataURLToBuffer, uuidv4 } from "./utils";
+import { bufferToDataURL, dataURLToBuffer, exists, uuidv4 } from "./utils";
 import { extension, lookup } from "mime-types";
-import { writeFileSync } from "fs";
+import { readFile, readdir } from "fs/promises";
 import { hooks, sendWebhook } from "./webhooks";
 import { Message } from "discord.js";
 import { users } from "./users";
-import { Color, esc, log } from "./logger";
+import { C, log } from "./logger";
+import getDepthMap from "./depth";
 
 const funnynumber = require("../commands/funnynumber");
 
@@ -48,6 +49,39 @@ router.post("/inpaint", (req, res) => {
         });
 });
 
+router.post("/depth", async (req, res) => {
+    let dm = await getDepthMap(dataURLToBuffer(req.body.img));
+    res.contentType("image/png").send(dm);
+});
+
+router.get("/track_day/:id", async (req, res) => {
+    let d = new Date();
+    let dateStr = `${d.getFullYear().toString().padStart(4, "0")}-${(
+        d.getMonth() + 1
+    )
+        .toString()
+        .padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
+    if (await exists(`./track/${req.params.id}/${dateStr}.txt`)) {
+        res.contentType("txt").send(
+            await readFile(`./track/${req.params.id}/${dateStr}.txt`, "utf8")
+        );
+    } else {
+        res.status(404).contentType("txt").send("404 Server Not Found");
+    }
+});
+router.get("/track_all/:id", async (req, res) => {
+    if (await exists(`./track/${req.params.id}`)) {
+        let track = "";
+        for (const file of await readdir(`./track/${req.params.id}`)) {
+            track +=
+                "\n" + (await readFile(`./track/${req.params.id}/` + file));
+        }
+        res.contentType("txt").send(track.trim());
+    } else {
+        res.status(404).contentType("txt").send("404 Server Not Found");
+    }
+});
+
 router.post("/question", (req, res) => {
     question(req.body.question).then((answer) => {
         res.contentType("txt").send(answer);
@@ -55,12 +89,7 @@ router.post("/question", (req, res) => {
 });
 
 router.get("/legacy/question/:question", (req, res) => {
-    log(
-        `Legacy API request for ${esc(Color.Cyan)}question${esc(
-            Color.White
-        )}...`,
-        "api-legacy"
-    );
+    log(`Legacy API request for ${C.Cyan}question${C.White}...`, "api-legacy");
     question(req.params.question.replace(/_sps_/g, " ")).then((answer) => {
         res.contentType("txt").send(answer);
     });
@@ -68,18 +97,14 @@ router.get("/legacy/question/:question", (req, res) => {
 
 router.get("/legacy/funnynumber/:funnynumber", (req, res) => {
     log(
-        `Legacy API request for ${esc(Color.Cyan)}funnynumber${esc(
-            Color.White
-        )}...`,
+        `Legacy API request for ${C.Cyan}funnynumber${C.White}...`,
         "api-legacy"
     );
     funnynumber
         .execute([req.params.funnynumber, "--noformat"], [])
         .then((resp: FlapsMessageCommandResponse) => {
             log(
-                `Legacy API request for ${esc(Color.Cyan)}funnynumber ${esc(
-                    Color.White
-                )}succeeded!`,
+                `Legacy API request for ${C.Cyan}funnynumber ${C.White}succeeded!`,
                 "api-legacy"
             );
             res.contentType("txt").send(resp.content);
@@ -95,25 +120,20 @@ router.post("/runcmd", (req, res) => {
     let command = commands.find((cmd) =>
         cmd.aliases.includes(req.body.id.toLowerCase())
     );
-    log(
-        `API request for command ${esc(Color.Green)}${req.body.id}${esc(
-            Color.White
-        )}...`,
-        "api"
-    );
+    log(`API request for command ${C.Green}${req.body.id}${C.White}...`, "api");
     if (command) {
         var files = (req.body.files || []).map((x: string) => xbuf(x));
+        let args = (req.body.args || "").split(" ");
+        if (args.length == 1 && args[0].length == 0) args = [];
         command
-            .execute((req.body.args || "").split(" "), files, {
+            .execute(args, files, {
                 channel: null,
             } as Message)
             .then((response) => {
                 switch (response.type) {
                     case CommandResponseType.Message:
                         log(
-                            `API request for command ${esc(Color.Green)}${
-                                req.body.id
-                            } ${esc(Color.White)}succeeded!`,
+                            `API request for command ${C.Green}${req.body.id} ${C.White}succeeded!`,
                             "api"
                         );
                         res.json({
@@ -134,11 +154,7 @@ router.post("/runcmd", (req, res) => {
             })
             .catch((reason) => {
                 log(
-                    `API request for command ${esc(Color.Green)}${
-                        req.body.id
-                    }${esc(Color.White)} failed: ${esc(
-                        Color.BrightRed
-                    )}Execution error${esc(Color.White)}.`,
+                    `API request for command ${C.Green}${req.body.id}${C.White} failed: ${C.BRed}Execution error${C.White}.`,
                     "api"
                 );
                 res.json({
@@ -153,11 +169,7 @@ router.post("/runcmd", (req, res) => {
             .finally(() => {});
     } else {
         log(
-            `API request for command ${esc(Color.Green)}${
-                req.body.id
-            } failed: ${esc(Color.BrightRed)}Command not found${esc(
-                Color.White
-            )}.`,
+            `API request for command ${C.Green}${req.body.id} failed: ${C.BRed}Command not found${C.White}.`,
             "api"
         );
         res.status(404).contentType("txt").send("404 Command Not Found");
@@ -188,27 +200,19 @@ router.get("/userlist", (req, res) => {
 
 router.get("/legacy/userdata/:id", (req, res) => {
     log(
-        `Legacy API request for user ${esc(Color.Yellow)}${req.params.id}${esc(
-            Color.White
-        )}...`,
+        `Legacy API request for user ${C.Yellow}${req.params.id}${C.White}...`,
         "api-legacy"
     );
     let user = hooks.get(req.params.id);
     if (user) {
         log(
-            `Legacy API request for user ${esc(Color.Yellow)}${
-                req.params.id
-            } ${esc(Color.White)}succeeded!`,
+            `Legacy API request for user ${C.Yellow}${req.params.id} ${C.White}succeeded!`,
             "api-legacy"
         );
         res.contentType("txt").send(user.name);
     } else {
         log(
-            `Legacy API request for user ${esc(Color.Yellow)}${
-                req.params.id
-            } ${esc(Color.White)}failed: ${esc(
-                Color.BrightRed
-            )}User not found.`,
+            `Legacy API request for user ${C.Yellow}${req.params.id} ${C.White}failed: ${C.BRed}User not found.`,
             "api-legacy"
         );
         res.contentType("txt").send("FlapsAPIUnknownUser");
