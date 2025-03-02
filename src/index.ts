@@ -1,55 +1,111 @@
-import { Color, esc, log } from "./lib/logger";
 import { config } from "dotenv";
-log("Loading settings...", "start");
+import { C, LM, getMessageLog, log } from "./lib/logger";
 config();
-log("Importing modules...", "start");
+export const VERBOSE = process.env.VERBOSE == "yes";
+export const DOMAIN = process.env.DOMAIN;
+export const TRACK = process.env.ENABLE_TRACK == "yes";
+export const TRACK_SERVER_REPORTS = process.env.TRACK_SERVER_REPORTS.split(",")
+    .filter((n) => n.length > 0)
+    .map((n) => n.split(":"));
+log(`Importing modules (${C.BCyan}@discordjs/voice${C.White})...`, "start");
 import {
+    AudioPlayer,
+    DiscordGatewayAdapterCreator,
+    NoSubscriberBehavior,
+    VoiceConnection,
+    createAudioPlayer,
+    createAudioResource,
+    joinVoiceChannel,
+} from "@discordjs/voice";
+log(`Importing modules (${C.BCyan}canvas${C.White})...`, "start");
+import { registerFont } from "canvas";
+log(`Importing modules (${C.BCyan}discord.js${C.White})...`, "start");
+import {
+    ActionRowBuilder,
     ActivityType,
     Attachment,
-    CategoryChannel,
+    ButtonInteraction,
+    ChannelType,
     Client,
     Collection,
-    Guild,
-    GuildMember,
+    Interaction,
     Message,
+    MessageReaction,
     Partials,
     TextBasedChannel,
     TextChannel,
+    User,
+    VoiceBasedChannel,
 } from "discord.js";
+log(`Importing modules (${C.BCyan}fs${C.White})...`, "start");
 import { readFile, readdir, writeFile } from "fs/promises";
-import { readFileSync, writeFileSync, existsSync } from "fs";
-import { hooks, sendWebhook, updateUsers } from "./lib/webhooks";
+log(`Importing modules (${C.BCyan}mime-types${C.White})...`, "start");
+import { contentType, lookup } from "mime-types";
+log(`Importing modules (${C.BCyan}fetch${C.White})...`, "start");
+import fetch from "node-fetch";
+log(`Importing modules (${C.BCyan}flaps/battle${C.White})...`, "start");
+import {
+    getBattleAction,
+    getBattleImage,
+    getComponents,
+    handleBattleAction,
+} from "./lib/battle";
+log(`Importing modules (${C.BCyan}flaps/download${C.White})...`, "start");
+import { downloadPromise } from "./lib/download";
+log(`Importing modules (${C.BCyan}flaps/ffmpeg${C.White})...`, "start");
+import { ffmpegBuffer, file } from "./lib/ffmpeg/ffmpeg";
+log(`Importing modules (${C.BCyan}flaps/gvd${C.White})...`, "start");
+import { getVideoDimensions } from "./lib/ffmpeg/getVideoDimensions";
+log(`Importing modules (${C.BCyan}flaps/fsserver${C.White})...`, "start");
+import filestreamServer from "./lib/filestreamserver";
+log(`Importing modules (${C.BCyan}flaps/tictactoe${C.White})...`, "start");
+import {
+    createComponentList,
+    createMessageContent,
+    games,
+    makeMove,
+} from "./lib/tictactoe";
+log(`Importing modules (${C.BCyan}flaps/utils${C.White})...`, "start");
+import {
+    SPOILERBUG,
+    convertWebpAttachmentToPng,
+    decodeObject,
+    encodeObject,
+    exists,
+    getFileExt,
+    getFileName,
+    getTypeSingular,
+    getTypes,
+    makeMessageResp,
+    scheduleDelete,
+    tenorURLToGifURL,
+    uuidv4,
+} from "./lib/utils";
+log(`Importing modules (${C.BCyan}flaps/web${C.White})...`, "start");
+import initializeWebServer from "./lib/web";
+log(`Importing modules (${C.BCyan}flaps/webhooks${C.White})...`, "start");
+import {
+    editWebhookMessage,
+    hooks,
+    sendWebhook,
+    updateUsers,
+} from "./lib/webhooks";
+log(`Importing modules (${C.BCyan}flaps/types${C.White})...`, "start");
 import {
     AutoStatusInfo,
+    Battle,
     CommandResponseType,
     FlapsCommand,
     FlapsCommandResponse,
+    TicTacToeCell,
 } from "./types";
-import { downloadPromise } from "./lib/download";
-import {
-    getFileExt,
-    getTypes,
-    getTypeSingular,
-    makeMessageResp,
-    scheduleDelete,
-    uuidv4,
-} from "./lib/utils";
-import { registerFont } from "canvas";
-import fetch from "node-fetch";
-import { getVideoDimensions } from "./lib/ffmpeg/getVideoDimensions";
-import {
-    AudioPlayer,
-    createAudioPlayer,
-    DiscordGatewayAdapterCreator,
-    joinVoiceChannel,
-    NoSubscriberBehavior,
-    VoiceConnection,
-} from "@discordjs/voice";
-import { contentType, lookup } from "mime-types";
-import initializeWebServer from "./lib/web";
-import { file } from "./lib/ffmpeg/ffmpeg";
-import { flapsWeb3DAPIInit } from "./lib/web3dapi";
-import filestreamServer from "./lib/filestreamserver";
+log(`Importing modules (${C.BCyan}flaps/track${C.White})...`, "start");
+import { trackMessage, trackPresence } from "./lib/track";
+log(`Importing modules (${C.BCyan}flaps/web3d${C.White})...`, "start");
+import { trackReport } from "./lib/web3dapi";
+import { handleInteraction } from "./lib/connect4";
+
+process.title = "Flaps Chelton";
 
 log("Initializing client...", "start");
 export const client: Client = new Client({
@@ -77,63 +133,84 @@ export const voiceConnections: Collection<string, VoiceConnection> =
     new Collection();
 export const voicePlayers: Collection<string, AudioPlayer> = new Collection();
 
-client.on("ready", async () => {
-    log("Logged in, entering voice...", "start");
-    let gs = await client.guilds.fetch();
-    for (const [guildi, guildp] of gs) {
-        let guild = await guildp.fetch();
-        let vc = guild.channels.cache.find((c) => c.isVoiceBased());
-        if (!vc) continue;
-        let conn = joinVoiceChannel({
-            channelId: vc.id,
-            guildId: guildi,
-            adapterCreator:
-                guild.voiceAdapterCreator as DiscordGatewayAdapterCreator,
-        });
-        let ply = createAudioPlayer({
-            behaviors: {
-                noSubscriber: NoSubscriberBehavior.Play,
-            },
-        });
-        conn.subscribe(ply);
-        voicePlayers.set(guildi, ply);
-        voiceConnections.set(guildi, conn);
+function flapsJoinVoiceChannel(channel: VoiceBasedChannel) {
+    let connection = joinVoiceChannel({
+        channelId: channel.id,
+        guildId: channel.guildId,
+        adapterCreator: channel.guild
+            .voiceAdapterCreator as unknown as DiscordGatewayAdapterCreator,
+    });
+    let player = createAudioPlayer({
+        behaviors: {
+            noSubscriber: NoSubscriberBehavior.Play,
+        },
+    });
+    connection.subscribe(player);
+    voicePlayers.set(channel.guildId, player);
+    voiceConnections.set(channel.guildId, connection);
+}
+
+client.on("voiceStateUpdate", (oldState, newState) => {
+    let channel = newState.channel;
+    let join = true;
+    if (!channel) {
+        channel = oldState.channel;
+        join = false;
     }
-    log(`${esc(Color.BrightGreen)}Listening for commands!`, "start");
+    if (newState.channel && oldState.channel) {
+        join = newState.channelId != oldState.channelId;
+    }
+    let flapsInChannel = channel.members.has(client.user.id);
+    if (flapsInChannel && !voiceConnections.has(channel.guildId)) {
+        flapsJoinVoiceChannel(channel);
+    }
+    if (channel.members.size > 0 && !flapsInChannel) {
+        flapsJoinVoiceChannel(channel);
+    }
+    if (channel.members.size == 1 && flapsInChannel) {
+        voiceConnections.get(channel.guildId).disconnect();
+        voiceConnections.get(channel.guildId).destroy();
+        voicePlayers.delete(channel.guildId);
+        voiceConnections.delete(channel.guildId);
+    }
+    if (join && newState.id !== client.user.id) {
+        exists(`audio/join/${newState.id}.mp3`).then((ex) => {
+            if (!ex) return;
+            setTimeout(() => {
+                let resource = createAudioResource(
+                    `audio/join/${newState.id}.mp3`
+                );
+                voicePlayers.get(channel.guildId).play(resource);
+            }, 1000);
+        });
+    }
+});
+
+client.on("ready", async () => {
+    log(`${C.BGreen}Listening for commands!`, "start");
 
     client.user.setPresence({
         activities: [
             {
-                name: "commands!",
-                type: ActivityType.Listening,
-                url: "https://konalt.us.to/g",
+                name: "custom",
+                type: ActivityType.Custom,
+                state: "BACK FROM THE DEAD AND REPORTING FOR DUTY!",
             },
         ],
-        afk: true,
+        afk: false,
         status: "online",
     });
 
     readFile("saved_status.txt")
         .then((b) => b.toString("utf-8"))
         .then((statusData) => {
-            let statusType =
-                ActivityType[
-                    statusData
-                        .split(" ")[0]
-                        .split("")
-                        .map((l, i) =>
-                            i == 0 ? l.toUpperCase() : l.toLowerCase()
-                        )
-                        .join("")
-                ];
-            let name = statusData.split(" ").slice(1).join(" ");
             setTimeout(() => {
                 client.user.setPresence({
                     activities: [
                         {
-                            name,
-                            type: statusType,
-                            url: "https://konalt.us.to/",
+                            name: "custom",
+                            type: ActivityType.Custom,
+                            state: statusData,
                         },
                     ],
                     afk: false,
@@ -143,52 +220,9 @@ client.on("ready", async () => {
         });
 });
 
-const COMMAND_PREFIX = "!";
-const WH_PREFIX = "<";
-
-function idFromName(name: string) {
-    return hooks.find((h) => h.name == name).id || "flaps";
-}
-
-function logMessage(
-    msg: Message,
-    commandRan: boolean,
-    webhookUsed: boolean,
-    commandArgs: string[]
-) {
-    if (!(msg.channel instanceof TextChannel)) return;
-    let channel = `${esc(Color.Yellow)}<#${msg.channel.name}>`;
-    let user = `${
-        msg.author.bot && msg.author.discriminator == "0000"
-            ? esc(Color.Cyan) + `<wh:${idFromName(msg.author.username)}>`
-            : esc(Color.BrightCyan) +
-              `<${msg.author.username}#${msg.author.discriminator}>`
-    }`;
-    let contentColor = `${esc(Color.White)}${
-        commandRan
-            ? esc(Color.BrightGreen)
-            : webhookUsed
-            ? esc(Color.BrightYellow)
-            : ""
-    }`;
-    let content = `${
-        commandRan || webhookUsed
-            ? [
-                  msg.content.split(" ")[0],
-                  commandArgs.length > 0
-                      ? esc(Color.White) + commandArgs.join(" ")
-                      : "",
-              ]
-                  .join(" ")
-                  .trim()
-            : msg.content
-    }`;
-
-    log(
-        `${channel} ${user} ${contentColor}${content}`.replace(/ {2,}/g, " "),
-        "chat"
-    );
-}
+const COMMAND_PREFIX = process.env.COMMAND_PREFIX;
+const WH_PREFIX = process.env.WEBHOOK_PREFIX;
+const WH_EDIT_PREFIX = process.env.WEBHOOK_EDIT_PREFIX;
 
 function autoReact(msg: Message) {
     let f: string[] = [];
@@ -196,6 +230,12 @@ function autoReact(msg: Message) {
         for (const trigger of triggers) {
             if (f.includes(flagName)) break;
             if (msg.content.toLowerCase().includes(trigger)) f.push(flagName);
+            if (
+                msg.attachments.first() &&
+                msg.attachments.first().contentType == "image/avif"
+            ) {
+                f.push("avif");
+            }
         }
     }
     if (f.includes("rember")) {
@@ -231,8 +271,14 @@ function autoReact(msg: Message) {
                 (emoji) => emoji.name === "828274359076126760"
             )
         );
-    if (f.includes("copper")) {
+    if (f.includes("avif")) {
+        msg.react(process.env.AVIF_CONVERT_EMOJI_ID);
+    }
+    if (f.includes("copper") && !msg.author.bot) {
         sendWebhook("flaps", "copper you say?", msg.channel as TextChannel);
+    }
+    if (f.includes("malta") && !msg.author.bot) {
+        sendWebhook("flaps", "maltesers you say?", msg.channel as TextChannel);
     }
 }
 
@@ -245,124 +291,16 @@ function typesMatch(inTypes: string[], requiredTypes: string[]) {
     return ok;
 }
 
-function tenorURLToGifURL(url: string): Promise<string> {
-    var searchString = '<meta class="dynamic" name="twitter:image" content="';
-    return new Promise((resl) => {
-        /* @ts-ignore */
-        fetch(url).then((value: Response) => {
-            value.text().then((data) => {
-                var newURL = data
-                    .substring(data.indexOf(searchString) + searchString.length)
-                    .split('"')[0];
-                resl(newURL);
-            });
-        });
-    });
-}
-
-function getSourcesWithAttachments(msg: Message, types: string[]) {
-    return new Promise(async (resolve, reject) => {
-        function l2(msg: Message) {
-            var atts = msg.attachments.first(types.length);
-            var attTypes = getTypes(atts);
-            if (!atts[0] && !types[0].endsWith("?")) {
-                if (msg.content.startsWith("https://tenor.com/")) {
-                    var type = "gif";
-                    if (typesMatch([type], types)) {
-                        tenorURLToGifURL(msg.content).then((url) => {
-                            var id = uuidv4().replace(/-/gi, "");
-                            downloadPromise(
-                                url,
-                                "images/cache/" + id + ".gif"
-                            ).then(async (buffer) => {
-                                var name = "images/cache/" + id + ".gif";
-                                var dimensions = await getVideoDimensions([
-                                    buffer,
-                                    name,
-                                ]);
-                                resolve([
-                                    [
-                                        {
-                                            width: dimensions[0],
-                                            height: dimensions[1],
-                                        },
-                                        name,
-                                    ],
-                                ]);
-                            });
-                        });
-                    } else {
-                        reject(
-                            "Type Error (Attempted Tenor):\n" +
-                                getTypeMessage(["gif"], types)
-                        );
-                    }
-                } else if (
-                    msg.content.startsWith("https://cdn.discordapp.com/") ||
-                    msg.content.startsWith("https://media.discordapp.net/")
-                ) {
-                    var filename = msg.content.split(" ")[0].split("/")[
-                        msg.content.split("/").length - 1
-                    ];
-                    var type = getTypeSingular(lookup(filename) || "unknown");
-                    var ext =
-                        filename.split(".")[filename.split(".").length - 1];
-                    if (typesMatch([type], types)) {
-                        var id = uuidv4().replace(/-/gi, "");
-                        var npath = id + "." + ext;
-                        var zpath = "images/cache/" + npath;
-                        downloadPromise(msg.content.split(" ")[0], zpath).then(
-                            async (buffer) => {
-                                var dimensions = await getVideoDimensions([
-                                    buffer,
-                                    ext,
-                                ]);
-                                resolve([
-                                    [
-                                        {
-                                            width: dimensions[0],
-                                            height: dimensions[1],
-                                        },
-                                        zpath,
-                                    ],
-                                ]);
-                            }
-                        );
-                    } else {
-                        reject(
-                            "Type Error (Attempted Discord):\n" +
-                                getTypeMessage(["gif"], types)
-                        );
-                    }
-                } else {
-                    reject("No source found (content:" + msg.content + ")");
-                }
-            } else if (!typesMatch(attTypes, types)) {
-                reject("Type Error:\n" + getTypeMessage(attTypes, types));
-            } else {
-                var ids = atts.map(() => uuidv4().replace(/-/gi, ""));
-                var exts = atts.map(
-                    (att) => "." + att.url.split(".").pop().split("?")[0]
-                );
-                var proms = atts.map((att, i) =>
-                    downloadPromise(att.url, "images/cache/" + ids[i] + exts[i])
-                );
-                Promise.all(proms).then(() => {
-                    resolve(
-                        atts.map((att, i) => [
-                            att,
-                            "images/cache/" + ids[i] + exts[i],
-                        ])
-                    );
-                });
-            }
-        }
-        if (!msg.attachments.first() && !types[0].endsWith("?")) {
-            if (!msg.reference) {
-                const channel = await client.channels.fetch(msg.channel.id);
-                if (!(channel instanceof TextChannel)) {
-                    return reject("No source found");
-                }
+async function getSources(
+    commandMessage: Message,
+    types: string[],
+    localAttachments: Buffer[] = []
+): Promise<[Buffer, string][]> {
+    let msg = commandMessage;
+    if (!msg.attachments.first()) {
+        if (!msg.reference) {
+            if (!types[0].endsWith("?")) {
+                const channel = await msg.channel.fetch();
                 const messages = await channel.messages.fetch({
                     limit: 10,
                     before: msg.id,
@@ -371,43 +309,102 @@ function getSourcesWithAttachments(msg: Message, types: string[]) {
                     (m) => m.author.id == msg.author.id
                 );
                 const lastMessage = filteredMessages.first(2)[1];
-                if (!lastMessage) {
-                    reject("No source found");
-                } else {
-                    l2(lastMessage);
+                if (lastMessage) {
+                    msg = lastMessage;
                 }
-            } else {
-                msg.fetchReference().then((ref) => {
-                    l2(ref);
-                });
             }
         } else {
-            l2(msg);
+            msg = await msg.fetchReference();
         }
-    });
-}
-
-function getSources(msg: Message, types: string[]): Promise<string[]> {
-    return new Promise((resolve, reject) => {
-        getSourcesWithAttachments(msg, types)
-            .then((data: string[]) => {
-                resolve(data.map((x) => x[1]));
-            })
-            .catch((r) => {
-                reject(r);
-            });
-    });
+    }
+    var atts = msg.attachments.first(types.length);
+    var attTypes = getTypes(atts);
+    let sources: [Buffer, string][] = [];
+    let n = 0;
+    let m = 0;
+    for (const type of attTypes) {
+        if (atts[n].url.startsWith("%local")) {
+            sources.push([localAttachments[m], getFileExt(atts[n].url)]);
+            m++;
+        } else if (type == "webp") {
+            let attachment = await convertWebpAttachmentToPng(atts[n]);
+            sources.push([attachment, "png"]);
+        } else {
+            let buf = await downloadPromise(atts[n].url);
+            sources.push([buf, getFileExt(atts[n].url)]);
+        }
+        n++;
+    }
+    attTypes = attTypes.map((t) => (t == "webp" ? "image" : t));
+    if (!atts[0] && !types[0].endsWith("?")) {
+        if (msg.content.startsWith("https://tenor.com/")) {
+            if (typesMatch(["gif"], types)) {
+                let url = await tenorURLToGifURL(msg.content);
+                let buffer = await downloadPromise(url);
+                return [[buffer, "gif"]];
+            } else {
+                throw new Error(
+                    "Type Error:\n" + getTypeMessage(["gif"], types)
+                );
+            }
+        } else if (
+            msg.content.startsWith("https://cdn.discordapp.com/") ||
+            msg.content.startsWith("https://media.discordapp.net/")
+        ) {
+            let url = msg.content.split(" ")[0];
+            let ext = getFileExt(url);
+            var type = getTypeSingular(lookup(ext) || ext);
+            if (typesMatch([type], types)) {
+                let buffer = await downloadPromise(url);
+                return [[buffer, ext]];
+            } else {
+                throw new Error(
+                    "Type Error:\n" + getTypeMessage([type], types)
+                );
+            }
+        } else {
+            throw new Error(`This command requires: \`${types.join("`, `")}\``);
+        }
+    } else if (!typesMatch(attTypes, types)) {
+        throw new Error(`Type Error:\n${getTypeMessage(attTypes, types)}`);
+    } else {
+        return sources;
+    }
 }
 
 let errorChannel: TextBasedChannel;
 
 export async function onMessage(msg: Message) {
-    if (msg.author.bot) return;
     if (!(msg.channel instanceof TextChannel)) {
-        msg.reply("this mf bot dont support dms get the fuck outta here");
+        if (msg.author.bot) return;
+        switch (msg.channel.type) {
+            case ChannelType.DM:
+                msg.reply("this bot doesnt support dms!");
+                break;
+            case ChannelType.PublicThread:
+            case ChannelType.PrivateThread:
+                if (
+                    msg.content.startsWith(WH_PREFIX) ||
+                    msg.content.startsWith(COMMAND_PREFIX)
+                )
+                    msg.reply("flaps doesnt work in threads!");
+                break;
+            default:
+                if (
+                    msg.content.startsWith(WH_PREFIX) ||
+                    msg.content.startsWith(COMMAND_PREFIX)
+                )
+                    msg.reply("you cant use flaps here!");
+                break;
+        }
+
         return;
     }
-    let commandArgs = msg.content.split(" ").slice(1);
+
+    log(getMessageLog(msg), "chat");
+    if (TRACK) {
+        trackMessage(msg);
+    }
 
     if (isMidnightActive) {
         var mem = await msg.guild.members.fetch(msg.member);
@@ -426,21 +423,51 @@ export async function onMessage(msg: Message) {
         }
     }
 
-    let webhookUsed = false;
     if (msg.content.startsWith(WH_PREFIX)) {
-        let id = msg.content.split(" ")[0].substring(WH_PREFIX.length);
+        let id = msg.content
+            .split(" ")[0]
+            .substring(WH_PREFIX.length)
+            .toLowerCase();
         let content = msg.content.split(" ").slice(1).join(" ");
         if (hooks.get(id)) {
-            webhookUsed = true;
-            sendWebhook(id, content, msg.channel);
-            msg.delete();
+            if (msg.attachments.size > 0) {
+                let att = msg.attachments.first();
+                let type = getFileExt(att.url);
+                downloadPromise(att.url).then((buffer) => {
+                    sendWebhook(
+                        id,
+                        content,
+                        msg.channel,
+                        buffer,
+                        getFileName("Proxied_Attachment", type)
+                    );
+                });
+                msg.delete();
+            } else {
+                sendWebhook(id, content, msg.channel);
+                msg.delete();
+            }
+        }
+    } else if (msg.content.startsWith(WH_EDIT_PREFIX)) {
+        if (msg.reference) {
+            let content = msg.content
+                .substring(WH_EDIT_PREFIX.length)
+                .toLowerCase();
+            {
+                editWebhookMessage(
+                    msg.reference.messageId,
+                    "flaps",
+                    content,
+                    msg.channel
+                );
+                msg.delete();
+            }
         }
     } else {
         autoReact(msg);
     }
 
     let commandRan = false;
-    let commandFiles = [];
     if (msg.content.startsWith(COMMAND_PREFIX)) {
         let commandChain: [string, string[]][] = msg.content
             .split("==>")
@@ -448,126 +475,122 @@ export async function onMessage(msg: Message) {
                 cmdtxt.trim().split(" ")[0].substring(COMMAND_PREFIX.length),
                 cmdtxt.trim().split(" ").slice(1),
             ]);
+        let localAttachments: Buffer[] = [];
         let defatts: Collection<string, Attachment> = msg.attachments;
         let lastresp: FlapsCommandResponse = makeMessageResp(
             "flapserrors",
             "Command did not return a FlapsCommandResponse."
         );
         let index = 0;
-        for (const info of commandChain) {
-            let commandId = info[0].toLowerCase();
-            let commandArgs = info[1];
-            let isLast = index == commandChain.length - 1;
+        try {
+            for (const info of commandChain) {
+                let commandId = info[0].toLowerCase();
+                let commandArgs = info[1];
 
-            let command = commands.find((cmd) =>
-                cmd.aliases.includes(commandId.toLowerCase())
-            );
-
-            if (command) {
-                logMessage(msg, true, webhookUsed, commandArgs);
-                log(
-                    `Running command ${esc(Color.BrightCyan)}${commandId}`,
-                    "cmd"
+                let command = commands.find((cmd) =>
+                    cmd.aliases.includes(commandId.toLowerCase())
                 );
-                if (commandId !== "retry") {
-                    let retryables = JSON.parse(
-                        (await readFile("retrycache.json")).toString()
+
+                if (command) {
+                    log(
+                        `${
+                            commandChain.length > 1
+                                ? `${C.BBlue}(${index + 1}/${
+                                      commandChain.length
+                                  }) ${C.White}`
+                                : ""
+                        }Running command ${C.BCyan}${commandId}`,
+                        "cmd"
                     );
-                    if (retryables[msg.author.id] != msg.id) {
-                        retryables[msg.author.id] = msg.id;
-                        await writeFile(
-                            "retrycache.json",
-                            JSON.stringify(retryables)
+                    if (commandId !== "retry") {
+                        let retryables = JSON.parse(
+                            (await readFile("retrycache.json")).toString()
                         );
+                        if (retryables[msg.author.id] != msg.id) {
+                            retryables[msg.author.id] = msg.id;
+                            await writeFile(
+                                "retrycache.json",
+                                JSON.stringify(retryables)
+                            );
+                        }
+                    }
+                    commandRan = true;
+                    errorChannel = msg.channel;
+                    if (command.needs && command.needs.length > 0) {
+                        let sources = await getSources(
+                            {
+                                attachments: defatts,
+                                reference: msg.reference,
+                                fetchReference: msg.fetchReference,
+                                client: client,
+                                channel: msg.channel,
+                                author: msg.author,
+                            } as Message,
+                            command.needs,
+                            localAttachments
+                        ).catch((e: Error) => {
+                            sendWebhook("flaps", e.message, msg.channel);
+                        });
+                        if (typeof sources == "string") return;
+                        if (!sources) return;
+                        let response = await command.execute(
+                            commandArgs,
+                            sources,
+                            msg
+                        );
+                        localAttachments = [];
+                        switch (response.type) {
+                            case CommandResponseType.Message:
+                                if (response.filename) {
+                                    defatts = new Collection();
+                                    defatts.set("0", {
+                                        url: "%local" + response.filename,
+                                        contentType: contentType(
+                                            response.filename
+                                        ),
+                                    } as Attachment);
+                                    localAttachments.push(response.buffer);
+                                }
+                                lastresp = response;
+                                break;
+                        }
+                    } else {
+                        let response = await command.execute(
+                            commandArgs,
+                            null,
+                            msg
+                        );
+                        switch (response.type) {
+                            case CommandResponseType.Message:
+                                if (response.filename) {
+                                    defatts = new Collection();
+                                    defatts.set("0", {
+                                        url: "%local" + response.filename,
+                                        contentType: contentType(
+                                            response.filename
+                                        ),
+                                    } as Attachment);
+                                    localAttachments.push(response.buffer);
+                                }
+                                lastresp = response;
+                                break;
+                        }
                     }
                 }
-                commandRan = true;
-                errorChannel = msg.channel;
-                if (command.needs && command.needs.length > 0) {
-                    let srcs = await getSources(
-                        {
-                            attachments: defatts,
-                            reference: msg.reference,
-                            fetchReference: msg.fetchReference,
-                            client: client,
-                            channel: msg.channel,
-                            author: msg.author,
-                        } as Message,
-                        command.needs
-                    ).catch((e) => sendWebhook("flaps", e, msg.channel));
-                    if (!srcs) return;
-                    let bufs: [Buffer, string][] = await Promise.all(
-                        srcs.map(async (s) => [await readFile(s), s])
-                    );
-                    for (const src of srcs) {
-                        commandFiles.push([src, 5]);
-                    }
-                    let response = await command.execute(
-                        commandArgs,
-                        bufs,
-                        msg
-                    );
-                    switch (response.type) {
-                        case CommandResponseType.Message:
-                            if (response.filename) {
-                                writeFileSync(
-                                    file("cache/" + response.filename),
-                                    response.buffer
-                                );
-                                commandFiles.push([
-                                    file("cache/" + response.filename),
-                                    isLast &&
-                                    response.buffer.byteLength > 25 * 1.049e6
-                                        ? 21600
-                                        : 5,
-                                ]);
-                                defatts = new Collection();
-                                defatts.set("0", {
-                                    url:
-                                        "https://flaps.us.to/cache/" +
-                                        response.filename,
-                                    contentType: contentType(response.filename),
-                                } as Attachment);
-                            }
-                            lastresp = response;
-                            break;
-                    }
-                } else {
-                    let response = await command.execute(
-                        commandArgs,
-                        null,
-                        msg
-                    );
-                    switch (response.type) {
-                        case CommandResponseType.Message:
-                            if (response.filename) {
-                                writeFileSync(
-                                    file("cache/" + response.filename),
-                                    response.buffer
-                                );
-                                commandFiles.push([
-                                    file("cache/" + response.filename),
-                                    isLast &&
-                                    response.buffer.byteLength > 25 * 1.049e6
-                                        ? 21600
-                                        : 5,
-                                ]);
-                                defatts = new Collection();
-                                defatts.set("0", {
-                                    url:
-                                        "https://flaps.us.to/cache/" +
-                                        response.filename,
-                                    contentType: contentType(response.filename),
-                                } as Attachment);
-                            }
-                            lastresp = response;
-                            break;
-                    }
-                }
-            } else {
-                logMessage(msg, false, webhookUsed, commandArgs);
+                index++;
             }
-            index++;
+        } catch (e) {
+            let r = e;
+            if (e.toString) {
+                r = e.toString();
+            }
+            lastresp.id = "flaps";
+            lastresp.content = `Execution Error in command \`${commandChain[index][0]}\`: \`\`\`${r}\`\`\``;
+            lastresp.buffer = null;
+            lastresp.filename = null;
+            lastresp.components = [];
+            log(`Execution Error Follows:`, "error");
+            console.log(e);
         }
 
         if (commandRan) {
@@ -576,32 +599,156 @@ export async function onMessage(msg: Message) {
                 lastresp.content,
                 msg.channel,
                 lastresp.buffer,
-                lastresp.filename
+                lastresp.filename,
+                lastresp.components
             );
-            for (const file of commandFiles) {
-                scheduleDelete(file[0], file[1]);
-            }
         }
-    } else {
-        logMessage(msg, false, webhookUsed, commandArgs);
     }
+}
+
+export async function onInteraction(interaction: Interaction) {
+    if (interaction instanceof ButtonInteraction) {
+        let customID = interaction.customId;
+        let interactionType = customID.split("-")[0];
+        switch (interactionType) {
+            case "ttt":
+                let gameID = customID.split("-")[1];
+                let [x, y] = customID
+                    .split("-")[2]
+                    .split("x")
+                    .map((x) => parseInt(x));
+                let game = games[gameID];
+                if (!game) return;
+                let player = 0;
+                if (interaction.user.id == game.player1.id) player = 1;
+                if (interaction.user.id == game.player2.id) player = 2;
+                if (player != 0) {
+                    if (
+                        ((game.nextPlace == TicTacToeCell.X && player == 2) ||
+                            (game.nextPlace == TicTacToeCell.O &&
+                                player == 1)) &&
+                        game.player1.id !== game.player2.id
+                    ) {
+                        interaction.reply({
+                            content: "It is not your turn!",
+                            ephemeral: true,
+                        });
+                    } else {
+                        makeMove(x, y, gameID);
+                        editWebhookMessage(
+                            interaction.message.id,
+                            "tictactoe",
+                            createMessageContent(game),
+                            interaction.message.channel,
+                            null,
+                            null,
+                            createComponentList(game.board, gameID)
+                        );
+                        interaction.deferUpdate();
+                    }
+                } else {
+                    interaction.reply({
+                        content: "You are not playing in this game!",
+                        ephemeral: true,
+                    });
+                }
+                break;
+            case "battle":
+                let battle = decodeObject(
+                    interaction.message.content.split("`")[1]
+                ) as Battle;
+                if (interaction.user.id !== battle.pid) {
+                    interaction.reply({
+                        content: "This battle is not yours!",
+                        ephemeral: true,
+                    });
+                    return;
+                }
+                let battleAction = getBattleAction(interaction.customId);
+                let updatedBattle = handleBattleAction(battle, battleAction);
+                await editWebhookMessage(
+                    interaction.message.id,
+                    "flaps",
+                    `The battle begins!${SPOILERBUG}\`${encodeObject(
+                        updatedBattle
+                    )}\``,
+                    interaction.message.channel,
+                    await getBattleImage(battle),
+                    getFileName("Battle", "png"),
+                    [
+                        new ActionRowBuilder().addComponents(
+                            getComponents(updatedBattle)
+                        ),
+                    ]
+                );
+                interaction.deferUpdate();
+                return;
+            case "c4":
+                handleInteraction(interaction);
+                return;
+        }
+    }
+}
+
+export async function onReaction(reaction: MessageReaction, user: User) {
+    reaction = await reaction.fetch();
+    user = await user.fetch();
+    if (reaction.message.author.id !== user.id) return;
+    if (reaction.emoji.id !== process.env.AVIF_CONVERT_EMOJI_ID) return;
+    if (!reaction.message.attachments.first()) return;
+    let att = reaction.message.attachments.first();
+    if (att.contentType !== "image/avif") return;
+
+    reaction.message.reactions.removeAll();
+
+    let avif = await downloadPromise(att.url);
+    let png = await ffmpegBuffer("-i $BUF0 $OUT", [[avif, "avif"]], "png");
+
+    sendWebhook(
+        "flaps",
+        "here's your png, you're welcome <:wanna_convert_this_avif:1279202408139980800>",
+        reaction.message.channel,
+        png,
+        getFileName("Converted_AVIF", "png")
+    );
 }
 
 // fuck you node
 process.on("unhandledRejection", (reason: any, p) => {
-    log(
-        `unhandled rejection. reason: ${esc(Color.BrightRed)}${reason.stack}`,
-        "promise"
-    );
+    let r = "unknown";
+    if (reason.stack) {
+        r = reason.stack;
+    } else {
+        r = reason;
+    }
+
+    log(`unhandled rejection. reason: ${C.BRed}${r}`, "promise");
     if (!errorChannel) return;
     sendWebhook(
         "flapserrors",
-        `Unhandled promise rejection.\nReason: \`${reason.stack}\``,
+        `Unhandled promise rejection.\nReason: \`${r}\``,
         errorChannel
     );
 });
 
 client.on("messageCreate", onMessage);
+client.on("interactionCreate", onInteraction);
+client.on("messageReactionAdd", onReaction);
+
+export async function getAllUserStates(serverId: string) {
+    let server = await client.guilds.fetch(serverId);
+    let states = {};
+    for (const [_, member] of server.members.cache) {
+        let status = "";
+        if (member.presence) {
+            status = member.presence.status;
+        } else {
+            status = "offline";
+        }
+        states[member.user.username] = status;
+    }
+    return states;
+}
 
 function loadAutoStatus() {
     return new Promise<void>(async (resolve, reject) => {
@@ -609,6 +756,7 @@ function loadAutoStatus() {
             (await readFile("autostatus.json")).toString()
         );
         client.on("presenceUpdate", async (oldPresence, newPresence) => {
+            if (TRACK) trackPresence(newPresence);
             if (newPresence.guild.id !== process.env.MAIN_GUILD) return;
             if (!Object.keys(autoStatus).includes(newPresence.userId)) return;
             log(
@@ -619,7 +767,12 @@ function loadAutoStatus() {
             );
             let status = autoStatus[newPresence.userId];
             let lastStatus = oldPresence ? oldPresence.status : "offline";
-            if (lastStatus == "online" || lastStatus == "dnd") return; // dont wanna alert people too much
+            if (
+                lastStatus == "online" ||
+                lastStatus == "dnd" ||
+                lastStatus == "idle"
+            )
+                return; // dont wanna alert people too much
             if (newPresence.clientStatus.desktop === "online") {
                 let channel = await client.channels.fetch(status.channel);
                 if (channel instanceof TextChannel) {
@@ -640,41 +793,29 @@ function loadAutoStatus() {
 export let commands: Collection<string, FlapsCommand> = new Collection();
 let flags: Record<string, string[]> = {};
 
-log("Loading fonts...", "start");
-registerFont("fonts/dog.otf", { family: "Fuckedup" });
-registerFont("fonts/homodog.otf", { family: "Homodog" });
-registerFont("fonts/weezer.otf", { family: "Weezer" });
-registerFont("fonts/futura.otf", {
-    family: "Futura",
-    weight: "400",
-});
-registerFont("fonts/vcr.ttf", {
-    family: "VCR OSD Mono",
-    weight: "400",
-});
-registerFont("fonts/tate.ttf", { family: "Tate" });
-registerFont("fonts/spotify.otf", { family: "Spotify" });
-registerFont("fonts/arial.ttf", { family: "Arial" });
-registerFont("fonts/ibmplex.otf", { family: "IBM Plex Sans", weight: "400" });
-registerFont("fonts/fancy.otf", { family: "Fancy", weight: "400" });
-registerFont("fonts/helvetica.ttf", { family: "Helvetica" });
-
 async function readCommandDir(dir: string) {
     const files = await readdir(dir, {
         withFileTypes: true,
     });
+    let ps = [];
     for (const file of files) {
         if (file.isDirectory()) {
-            await readCommandDir(dir + "/" + file.name);
+            ps.push(readCommandDir(dir + "/" + file.name));
         } else {
             let command = require(dir +
                 "/" +
                 file.name.split(".")[0]) as FlapsCommand;
+            if (
+                typeof command.name === "undefined" ||
+                commands.has(command.name)
+            )
+                continue;
             if (typeof command.aliases === "undefined") command.aliases = [];
             command.aliases.push(command.id);
             commands.set(command.id, command);
         }
     }
+    await Promise.all(ps);
 }
 
 var doneUsers = [];
@@ -697,7 +838,7 @@ function finishMidnight() {
 
     if (nonusers.length >= 2) {
         for (const nonuser of nonusers.slice(0, -1)) {
-            pings += "<@" + nonuser.id + "> ";
+            pings += "<@" + nonuser + "> ";
         }
         pings += "and <@" + nonusers.at(-1) + ">";
     } else if (nonusers.length > 0) {
@@ -750,6 +891,8 @@ export async function midnight(channel: TextChannel) {
     }, 60 * 1000); // 1 min
 }
 
+export let MAIN_CHANNEL: TextChannel;
+export let DUO_NOTIF_CHANNEL: TextChannel;
 export let [addBuffer, removeBuffer, addBufferSequence] = [
     (buffer: Buffer, ext: string) => {
         return "null";
@@ -761,119 +904,186 @@ export let [addBuffer, removeBuffer, addBufferSequence] = [
         return "null";
     },
 ];
-
-log("Loading commands...", "start");
-readCommandDir(__dirname + "/commands").then(() => {
-    log("Loading autoreact flags...", "start");
-    readFile("flags.txt", { encoding: "utf-8" }).then(async (flagtext) => {
-        for (const line of flagtext.split("\n")) {
-            let flagName = line.split(" ")[0];
-            if (!flags[flagName]) flags[flagName] = [];
-            flags[flagName].push(line.split(" ").slice(1).join(" "));
-        }
-        log("Loading autostatus messages...", "start");
-        await loadAutoStatus();
-        updateUsers().then(async () => {
-            log("Starting filestream server...", "start");
-            [addBuffer, removeBuffer, addBufferSequence] =
-                await filestreamServer();
-            setInterval(() => {
-                var d = new Date();
-                if (
-                    d.getMinutes() == 0 &&
-                    d.getHours() == 0 &&
-                    d.getSeconds() < 1
-                ) {
-                    midnight(
-                        client.channels.cache.get(
-                            process.env.MAIN_CHANNEL
-                        ) as TextChannel
-                    );
-                }
-                if (!existsSync("scal_allowtime.txt"))
-                    writeFileSync("scal_allowtime.txt", "no");
-                if (
-                    d.getMinutes() == 39 &&
-                    d.getSeconds() < 1 &&
-                    readFileSync("scal_allowtime.txt").toString() == "yes"
-                ) {
-                    writeFileSync("scal_allowtime.txt", "no");
-                    sendWebhook(
-                        "scal",
-                        "TIME\nHAHAHAHH",
-                        client.channels.cache.get(
-                            process.env.MAIN_CHANNEL
-                        ) as TextBasedChannel
-                    );
-                }
-                if (Math.random() < 1 / 100000) {
-                    sendWebhook(
-                        "nick",
-                        "pills here",
-                        client.channels.cache.get(
-                            process.env.MAIN_CHANNEL
-                        ) as TextBasedChannel
-                    );
-                }
-                if (
-                    d.getMinutes() == 33 &&
-                    d.getHours() == 23 &&
-                    d.getFullYear() == 2033 &&
-                    d.getMonth() == 2 &&
-                    d.getDate() == 3 &&
-                    d.getSeconds() < 1
-                ) {
-                    sendWebhook(
-                        "nick",
-                        "@everyone R.I.P. FUNKY TOWN\n IT'S 3/3/33 23:33 THO YA FUCKIN DONGS!!!!!",
-                        client.channels.cache.get(
-                            process.env.MAIN_CHANNEL
-                        ) as TextBasedChannel
-                    );
-                }
-            }, 1000);
-            log("Starting web server...", "start");
-            initializeWebServer().then(() => {
-                log("Initializing Web3D API...", "start");
-                flapsWeb3DAPIInit().then(() => {
-                    log("Logging in...", "start");
-                    client
-                        .login(process.env.DISCORD_TOKEN || "NoTokenProvided")
-                        .catch((e) => {
-                            console.log(e);
-                        });
-                });
-            });
+async function init() {
+    log("Loading...", "start");
+    let loadFonts = new Promise<void>((res) => {
+        registerFont("fonts/dog.otf", { family: "Fuckedup" });
+        registerFont("fonts/homodog.otf", { family: "Homodog" });
+        registerFont("fonts/weezer.otf", { family: "Weezer" });
+        registerFont("fonts/futura.otf", {
+            family: "Futura",
+            weight: "400",
         });
-    });
-});
-function getTypeMessage(inTypes: string[], reqTypes: string[]) {
-    var maxWidthIn = inTypes.reduce((a, b) =>
-        a.length > b.length ? a : b
-    ).length;
-    if (maxWidthIn < "SUPPLIED".length) maxWidthIn = "SUPPLIED".length;
-    var maxWidthReq = reqTypes.reduce((a, b) =>
-        a.length > b.length ? a : b
-    ).length;
-    if (maxWidthReq < "REQUIRED".length) maxWidthReq = "REQUIRED".length;
-    var out = [
-        [
-            "REQUIRED".padEnd(maxWidthReq),
-            "SUPPLIED".padEnd(maxWidthIn),
-            "STATUS",
-        ]
-            .join(" | ")
-            .trim(),
-        ["-".repeat(maxWidthIn + maxWidthReq + 3 + 3 + 6)],
-    ];
+        registerFont("fonts/vcr.ttf", {
+            family: "VCR OSD Mono",
+            weight: "400",
+        });
+        registerFont("fonts/tate.ttf", { family: "Tate" });
+        registerFont("fonts/spotify.otf", { family: "Spotify" });
+        registerFont("fonts/arial.ttf", { family: "Arial" });
+        registerFont("fonts/ibmplex.otf", {
+            family: "IBM Plex Sans",
+            weight: "400",
+        });
+        registerFont("fonts/fancy.otf", { family: "Fancy", weight: "400" });
+        registerFont("fonts/helvetica.ttf", { family: "Helvetica" });
+        registerFont("fonts/arialblack.ttf", {
+            family: "ArialBlack",
+            weight: "900",
+        });
+        // Open Sans
+        for (let i = 300; i <= 800; i += 100) {
+            registerFont(`fonts/opensans/${i}.ttf`, {
+                family: "Open Sans",
+                weight: i.toString(),
+                style: "normal",
+            });
+            registerFont(`fonts/opensans/${i}i.ttf`, {
+                family: "Open Sans",
+                weight: i.toString(),
+                style: "italic",
+            });
+        }
 
-    reqTypes.forEach((reqType, i) => {
-        var inType = inTypes[i];
-        var s = [];
-        s.push(reqType.padEnd(maxWidthReq, " "));
-        s.push(inType.padEnd(maxWidthIn, " "));
-        s.push(reqType.split("/").includes(inType) ? "OK" : "ERR");
-        out.push(s.join(" | ").trim());
+        log("Fonts loaded.", "start");
+        res();
     });
-    return "```\n" + out.join("\n") + "\n```";
+    let loadCommands = readCommandDir(__dirname + "/commands").then(() => {
+        log("Commands loaded.", "start");
+    });
+    let loadFlags = readFile("flags.txt", { encoding: "utf-8" }).then(
+        async (flagtext) => {
+            for (const line of flagtext.split("\n")) {
+                let flagName = line.split(" ")[0];
+                if (!flags[flagName]) flags[flagName] = [];
+                flags[flagName].push(line.split(" ").slice(1).join(" "));
+            }
+            log("Auto react flags loaded.", "start");
+        }
+    );
+    let loadAutoStatusP = loadAutoStatus().then(() => {
+        log("Auto status loaded.", "start");
+    });
+    let loadUsers = updateUsers().then(() => {
+        log("Users loaded.", "start");
+    });
+    let loadFilestreamServer = filestreamServer().then((d) => {
+        [addBuffer, removeBuffer, addBufferSequence] = d;
+        log("Filestream server started.", "start");
+    });
+    let loadWebServer = initializeWebServer().then(() => {
+        log("Web server started.", "start");
+    });
+    setInterval(async () => {
+        var d = new Date();
+        if (d.getMinutes() == 30 && d.getHours() == 23 && d.getSeconds() < 1) {
+            sendWebhook(
+                "flaps",
+                `<@${process.env.OWNER_TOKEN}> do your FUCKING duolingo dumbass`,
+                DUO_NOTIF_CHANNEL
+            );
+        }
+        if (d.getMinutes() == 0 && d.getHours() == 0 && d.getSeconds() < 1) {
+            midnight(MAIN_CHANNEL);
+            let d2 = new Date(d.getTime() - 5000);
+            let dateStr = `${d2.getFullYear().toString().padStart(4, "0")}-${(
+                d2.getMonth() + 1
+            )
+                .toString()
+                .padStart(2, "0")}-${d2.getDate().toString().padStart(2, "0")}`;
+            for (const [gid, cid] of TRACK_SERVER_REPORTS) {
+                if (await exists(`./track/${gid}/${dateStr}.txt`)) {
+                    sendWebhook(
+                        "flaps",
+                        "here's what you said today!!!",
+                        client.channels.cache.get(cid) as TextChannel,
+                        await trackReport(
+                            await readFile(
+                                `./track/${gid}/${dateStr}.txt`,
+                                "utf-8"
+                            )
+                        ),
+                        getFileName("Daily_Track", "png")
+                    );
+                }
+            }
+        }
+        if (Math.random() < 1 / 100000) {
+            sendWebhook(
+                Math.random() < 0.3 ? "coach" : "nick",
+                "pills here",
+                MAIN_CHANNEL
+            );
+        }
+        if (
+            d.getMinutes() == 33 &&
+            d.getHours() == 23 &&
+            d.getFullYear() == 2033 &&
+            d.getMonth() == 2 &&
+            d.getDate() == 3 &&
+            d.getSeconds() < 1
+        ) {
+            sendWebhook(
+                "nick",
+                "@everyone R.I.P. FUNKY TOWN\n IT'S 3/3/33 23:33 THO YA FUCKIN DONGS!!!!!",
+                MAIN_CHANNEL
+            );
+        }
+        if (
+            process.env.FRIDAY_CHANNEL.length > 0 &&
+            d.getDay() == 5 &&
+            d.getHours() == 17 &&
+            d.getMinutes() == 0 &&
+            d.getSeconds() < 1
+        ) {
+            sendWebhook(
+                "flaps",
+                "happy friday afternoon.",
+                client.channels.cache.get(
+                    process.env.FRIDAY_CHANNEL
+                ) as TextBasedChannel,
+                await readFile(file("friday.mp4")),
+                "Friday.mp4"
+            );
+        }
+    }, 1000);
+    await Promise.all([
+        loadAutoStatusP,
+        loadCommands,
+        loadFilestreamServer,
+        loadFlags,
+        loadFonts,
+        loadUsers,
+        loadWebServer,
+    ]);
+    log("Logging in...", "start");
+    client
+        .login(process.env.DISCORD_TOKEN || "NoTokenProvided")
+        .then(async () => {
+            MAIN_CHANNEL = (await client.channels.fetch(
+                process.env.MAIN_CHANNEL
+            )) as TextChannel;
+            DUO_NOTIF_CHANNEL = (await client.channels.fetch(
+                process.env.DUO_NOTIF_CHANNEL
+            )) as TextChannel;
+        })
+        .catch((e) => {
+            console.log(e);
+        });
+}
+
+init();
+
+function getTypeMessage(inTypes: string[], reqTypes: string[]) {
+    let out = [];
+    for (let i = 0; i < reqTypes.length; i++) {
+        const reqType = reqTypes[i];
+        const inType = inTypes[i];
+        if (reqType !== inType) {
+            out.push(
+                `\`${inType}\` was supplied instead of \`${reqType}\` for file ${i}.`
+            );
+        }
+    }
+    return out.join("\n");
 }

@@ -8,11 +8,11 @@ module.exports = {
     id: "ecube",
     name: "ECube",
     desc: "literally so insanely suspicious",
-    needs: ["image/video/gif"],
+    needs: ["image"],
     execute(args, buf) {
         return new Promise((res, rej) => {
             ecube(buf).then(
-                handleFFmpeg(getFileName("Effect_ECube", "mp4"), res),
+                handleFFmpeg(getFileName("Effect_ECube", "gif"), res),
                 handleFFmpegCatch(res)
             );
         });

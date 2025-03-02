@@ -9,29 +9,24 @@ module.exports = {
     name: "Versus",
     desc: "They shall do battle!",
     needs: ["image/gif/video", "image/gif/video"],
-    aliases: ["vs", "vs2"],
-    async execute(args: string[], imgbuf: [Buffer, string][], msg: Message) {
-        return new Promise((res, rej) => {
-            if (!args.join(" ").split(":")[1]) {
-                return sendWebhook(
-                    "flaps",
-                    "i need 2 images and 2 names mf!!!!!",
-                    msg.channel
-                );
-            }
-            versus(imgbuf, args.join(" ").split(":"), false).then(
-                (out: Buffer) => {
-                    res(
-                        makeMessageResp(
-                            "flaps",
-                            "",
-                            msg.channel,
-                            out,
-                            getFileName("Effect_Versus", "mp4")
-                        )
-                    );
-                }
+    aliases: ["vs"],
+    async execute(args, bufs, ms) {
+        if (!args.join(" ").split(":")[1]) {
+            return makeMessageResp(
+                "flaps",
+                "i need 2 images and 2 names mf!!!!!"
             );
-        });
+        }
+        let out = await versus(
+            bufs,
+            args.join(" ").split(":"),
+            args.join(" ").split(":")[2] == "long"
+        );
+        return makeMessageResp(
+            "flaps",
+            "",
+            out,
+            getFileName("Effect_Versus", "mp4")
+        );
     },
 } satisfies FlapsCommand;

@@ -1,6 +1,5 @@
 import homodog from "../../lib/canvas/homodog";
 import { getFileName, makeMessageResp } from "../../lib/utils";
-import { sendWebhook } from "../../lib/webhooks";
 import { FlapsCommand } from "../../types";
 
 module.exports = {
@@ -8,19 +7,18 @@ module.exports = {
     name: "Homophobic Dog",
     desc: "Not too fond...",
     needs: ["image?"],
-    execute(args, buf, msg) {
-        return new Promise((res, rej) => {
-            homodog(buf[0] ? buf[0][0] : null, args.join(" ")).then((out) => {
-                res(
-                    makeMessageResp(
-                        "homodog",
-                        "",
-                        msg.channel,
-                        out,
-                        getFileName("Canvas_Homodog", "png")
-                    )
-                );
-            });
-        });
+    async execute(args, imgbuf) {
+        let out: Buffer;
+        if (imgbuf[0]) {
+            out = await homodog(imgbuf[0][0], args.join(" "));
+        } else {
+            out = await homodog(null, args.join(" "));
+        }
+        return makeMessageResp(
+            "flaps",
+            "",
+            out,
+            getFileName("Canvas_Homodog", "png")
+        );
     },
 } satisfies FlapsCommand;

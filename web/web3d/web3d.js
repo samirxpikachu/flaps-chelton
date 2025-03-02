@@ -1,6 +1,8 @@
 import * as THREE from "three";
+import { LoopSubdivision } from "three-subdivide";
 import { TextGeometry } from "three/addons/geometries/TextGeometry.js";
 import { FontLoader } from "three/addons/loaders/FontLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const resolutions = {
     bigtext: [768, 768],
@@ -8,8 +10,16 @@ const resolutions = {
     ecube_2planes: [512, 512],
     ecube_hearts: [512, 512],
     ecube_sliced: [512, 512],
+    heartlocket: [400, 300],
+    cubespin: [512, 512],
+    sphere: [512, 512],
+    cirno: [800, 600],
+    flag: [800, 600],
+    capcut: [768, 768],
+    bed: [800, 600],
+    pokeball: [800, 600],
 };
-
+const NOTEXTURE = "images/uv_grid_opengl.jpg";
 const fontLoader = new FontLoader();
 async function loadFont(fontName) {
     return new Promise((res) => {
@@ -21,17 +31,60 @@ async function loadFont(fontName) {
 const textureLoader = new THREE.TextureLoader();
 async function loadTexture(textureName) {
     return new Promise((res) => {
-        if (!textureName)
-            textureName =
-                "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAALElEQVQYV2P8z/D/PwMQMAIhCAD5YBrGZySoAKwJi06ESYQUELSCoAKK3QAAUtcn+TTvDwYAAAAASUVORK5CYII=";
+        if (!textureName) textureName = NOTEXTURE;
         textureLoader.load(textureName, function (texture) {
             res(texture);
         });
     });
 }
+const gltfLoader = new GLTFLoader();
+async function loadModel(modelName) {
+    return new Promise((res) => {
+        gltfLoader.load(modelName, function (gltf) {
+            res(gltf.scene);
+        });
+    });
+}
 
 let lastID = "";
-let renderer, camera, scene;
+/**
+ * @type {THREE.WebGLRenderer}
+ */
+let renderer;
+/**
+ * @type {THREE.PerspectiveCamera}
+ */
+let camera;
+/**
+ * @type {THREE.Scene}
+ */
+let scene;
+
+function loadImage(url) {
+    return new Promise((resolve) => {
+        var img = new Image();
+        img.onload = () => {
+            resolve(img);
+        };
+        img.src = url;
+    });
+}
+
+async function depthMapToValueList(depthMap, res) {
+    let image = await loadImage(depthMap);
+    let canvas = document.createElement("canvas");
+    document.body.appendChild(canvas);
+    canvas.width = res;
+    canvas.height = res;
+    let ctx = canvas.getContext("2d");
+    ctx.drawImage(image, 0, 0, res, res);
+    let imageData = ctx.getImageData(0, 0, res, res);
+    let out = [];
+    for (let i = 0; i < imageData.data.length; i += 4) {
+        out.push(imageData.data[i] / 255);
+    }
+    return out;
+}
 
 async function _init(id, options = {}) {
     let size = resolutions[id];
@@ -42,9 +95,29 @@ async function _init(id, options = {}) {
         powerPreference: "high-performance",
         antialias: true,
     });
+    renderer.shadowMap.enabled = true;
     renderer.setSize(size[0], size[1]);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     document.body.appendChild(renderer.domElement);
+
+    function quickLight(x, y, z, col = 0xffffff) {
+        const light = new THREE.PointLight(col, 100, 100);
+        light.position.x = x;
+        light.position.y = y;
+        light.position.z = z;
+        scene.add(light);
+        return light;
+    }
+
+    function quickBigLight(x, y, z, col = 0xffffff) {
+        const light = new THREE.PointLight(col, 5000, 5000);
+        light.position.x = x;
+        light.position.y = y;
+        light.position.z = z;
+        light.castShadow = true;
+        scene.add(light);
+        return light;
+    }
 
     switch (id) {
         case "bigtext": {
@@ -323,13 +396,454 @@ async function _init(id, options = {}) {
                 camera.fov = fov;
                 camera.updateProjectionMatrix();
             };
+            break;
+        }
+        case "heartlocket": {
+            let img1 = options.img1 || NOTEXTURE;
+            let img2 = options.img2 || NOTEXTURE;
+
+            scene.background = new THREE.Color(0xffffff);
+
+            camera.position.x = 0;
+            camera.position.y = 0;
+            camera.position.z = 20;
+            camera.fov = 17.5;
+            camera.updateProjectionMatrix();
+            camera.lookAt(0, 0, 0);
+            camera.position.x = 2;
+            camera.position.y = -0.8;
+
+            let texture1 = await loadTexture(img1);
+            texture1.colorSpace = THREE.SRGBColorSpace;
+            let material1 = new THREE.MeshStandardMaterial({
+                map: texture1,
+            });
+
+            let texture2 = await loadTexture(img2);
+            texture2.colorSpace = THREE.SRGBColorSpace;
+            let material2 = new THREE.MeshStandardMaterial({
+                map: texture2,
+            });
+
+            let locket1 = await loadModel("models/locket.glb");
+            locket1.children[1].material = material1;
+            scene.add(locket1);
+            let locket2 = await loadModel("models/locket2.glb");
+            locket2.children[1].material = material2;
+            scene.add(locket2);
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.1);
+            scene.add(ambient);
+
+            quickLight(5, 4, 5);
+            quickLight(-5, -3, 1);
+            quickLight(6, -4, 3);
+            quickLight(2, 6, 2);
+
+            let r = 0;
+            let dr = 0;
+            let mdr = -0.002;
+            let ddr = -0.00005;
+            stepFunction = (
+                locket1angle = 0,
+                locket2angle = 0,
+                camerax = 0,
+                cameray = 0,
+                cameraz = 0,
+                droverride = -Infinity
+            ) => {
+                locket1.rotation.y = locket1angle;
+                locket2.rotation.y = locket2angle;
+                camera.position.x = camerax;
+                camera.position.y = cameray;
+                camera.position.z = cameraz;
+                camera.lookAt(2, -0.6, 2);
+                let udr = 0;
+                if (droverride != -Infinity) {
+                    udr = droverride;
+                } else {
+                    udr = dr;
+                }
+                camera.rotateOnAxis(new THREE.Vector3(0, 0, 1), r + udr);
+                r += udr;
+                dr += ddr;
+                if (dr > mdr) dr = mdr;
+            };
+            break;
+        }
+        case "cubespin": {
+            camera.position.x = 0;
+            camera.position.y = 0;
+            camera.position.z = 4;
+            camera.fov = 26;
+            camera.updateProjectionMatrix();
+            camera.lookAt(0, 0, 0);
+
+            let map = await loadTexture(options.img);
+            map.colorSpace = THREE.SRGBColorSpace;
+            const cube = new THREE.Mesh(
+                new THREE.BoxGeometry(1, 1, 1),
+                new THREE.MeshBasicMaterial({ map })
+            );
+            scene.add(cube);
+
+            stepFunction = (fractionalTurn = 0) => {
+                let fullRotate = Math.PI * 2;
+                cube.rotation.x = fractionalTurn * fullRotate;
+                cube.rotation.y = fractionalTurn * fullRotate;
+            };
+            break;
+        }
+        case "sphere": {
+            camera.position.x = 0;
+            camera.position.y = 0;
+            camera.position.z = 4;
+            camera.fov = 35;
+            camera.updateProjectionMatrix();
+            camera.lookAt(0, 0, 0);
+
+            let map = await loadTexture(options.img);
+            map.colorSpace = THREE.SRGBColorSpace;
+            const sphere = new THREE.Mesh(
+                new THREE.SphereGeometry(1, 64, 32),
+                new THREE.MeshBasicMaterial({ map })
+            );
+            scene.add(sphere);
+
+            stepFunction = (fractionalTurn = 0) => {
+                let fullRotate = Math.PI * 2;
+                sphere.rotation.y = fractionalTurn * fullRotate;
+            };
+            break;
+        }
+        case "cirno": {
+            let img = options.img || NOTEXTURE;
+
+            camera.position.x = 20;
+            camera.position.y = 7;
+            camera.position.z = 30;
+            camera.fov = 40;
+            camera.updateProjectionMatrix();
+            camera.lookAt(5, 7, 0);
+
+            let fumo = await loadModel("models/cirno.glb");
+            fumo.rotation.y = Math.PI;
+            let map = await loadTexture(img);
+            map.colorSpace = THREE.SRGBColorSpace;
+            map.flipY = false;
+            let material = new THREE.MeshStandardMaterial({
+                map,
+            });
+            fumo.children[0].material = material;
+            let scale = 0.6;
+            fumo.scale.x = scale;
+            fumo.scale.y = scale;
+            fumo.scale.z = scale;
+            scene.add(fumo);
+
+            let ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(999, 999),
+                new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+
+            scene.background = new THREE.Color(0x606060);
+            scene.fog = new THREE.Fog(0x606060, 90, 100);
+
+            quickBigLight(50, 50, 0);
+            quickBigLight(50, 30, 30);
+            quickBigLight(-50, 30, 30);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+            break;
+        }
+        case "flag": {
+            let segmentCount = 20;
+            let img = options.img || NOTEXTURE;
+            let imgWidth = options.imgWidth || 16;
+            let imgHeight = options.imgHeight || 16;
+            let flagHeight = 4;
+            let flagWidth = flagHeight * (imgWidth / imgHeight);
+            let skyTexture = await loadTexture(
+                "images/equirectangular_sky.jpg"
+            );
+            skyTexture.colorSpace = THREE.SRGBColorSpace;
+            console.log(flagWidth, flagHeight);
+            camera.position.z = 10;
+            camera.fov = 35;
+            camera.updateProjectionMatrix();
+            camera.lookAt(0, 0, 0);
+            let plane = new THREE.Mesh(
+                new THREE.PlaneGeometry(
+                    flagWidth,
+                    flagHeight,
+                    segmentCount,
+                    segmentCount
+                ),
+                new THREE.MeshStandardMaterial({
+                    map: await loadTexture(img),
+                })
+            );
+            if (plane.material.map)
+                plane.material.map.colorSpace = THREE.SRGBColorSpace;
+            plane.position.x = flagWidth / 2;
+            camera.position.x += flagWidth / 2;
+            let pole = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.075, 0.075, flagHeight * 2),
+                new THREE.MeshStandardMaterial({
+                    metalness: 1,
+                    roughness: 0.2,
+                    envMap: skyTexture,
+                    color: 0xffffff,
+                })
+            );
+            pole.position.y = -flagHeight / 2;
+            scene.add(pole);
+            let sky = new THREE.Mesh(
+                new THREE.SphereGeometry(500, 60, 60),
+                new THREE.MeshBasicMaterial({
+                    map: skyTexture,
+                })
+            );
+            sky.material.side = THREE.BackSide;
+            scene.add(sky);
+
+            quickBigLight(20, 20, 20);
+            quickBigLight(-50, 10, -20);
+
+            let overts = [...plane.geometry.attributes.position.array];
+            let li = 0;
+
+            stepFunction = (frameNumber = 0) => {
+                let vertices = plane.geometry.attributes.position.array;
+                for (
+                    let i = 0;
+                    i < plane.geometry.attributes.position.count;
+                    i++
+                ) {
+                    let [x, y] = [
+                        overts[i * 3] + flagWidth / 2,
+                        overts[i * 3 + 1],
+                    ];
+                    let xWave = 1;
+                    let yWave = 1;
+                    let amt = frameNumber / 3;
+                    let morphScale = Math.min((x * 2) / flagWidth, 1) * 0.6;
+                    let siner =
+                        (Math.sin((x + amt) * xWave) +
+                            Math.sin((y + amt) * yWave)) /
+                        2;
+                    vertices[i * 3 + 2] = siner * morphScale;
+                    if (
+                        Math.abs(
+                            Math.sin((y + amt) * yWave) - Math.sin(y * yWave)
+                        ) < 0.001
+                    ) {
+                        console.log("y loop interval is " + (frameNumber - li));
+                        li = frameNumber;
+                    }
+                }
+                plane.geometry.attributes.position.needsUpdate = true;
+                plane.geometry.computeVertexNormals();
+            };
+            if (options.debug) {
+                window.flapsWeb3DDebugAnimation();
+            }
+
+            let grid = new THREE.GridHelper(20, 20);
+            grid.rotation.x = Math.PI / 2;
+            scene.add(plane);
+            break;
+        }
+        case "capcut": {
+            let img = options.img || NOTEXTURE;
+            let map = await loadTexture(img);
+            map.colorSpace = THREE.SRGBColorSpace;
+            let depthMapResolution = 128;
+            let dW = depthMapResolution;
+            let dH = depthMapResolution;
+            let flagHeight = 15;
+            let flagWidth = flagHeight * (map.image.width / map.image.height);
+            camera.position.z = 30;
+            camera.position.x = 20;
+            camera.fov = 60;
+            camera.updateProjectionMatrix();
+            camera.lookAt(0, 0, 0);
+            let plane = new THREE.Mesh(
+                new THREE.PlaneGeometry(flagWidth, flagHeight, dW - 1, dH - 1),
+                //new THREE.MeshNormalMaterial()
+                new THREE.MeshStandardMaterial({ map })
+            );
+
+            console.log("running depth map");
+            let depthMapValues = await depthMapToValueList(
+                options.depth || NOTEXTURE,
+                depthMapResolution
+            );
+            console.log("modifying");
+            let vertices = plane.geometry.attributes.position.array;
+            for (let i = 0; i < plane.geometry.attributes.position.count; i++) {
+                vertices[i * 3 + 2] = depthMapValues[i] * 4;
+            }
+            plane.geometry.attributes.position.needsUpdate = true;
+            plane.geometry.computeVertexNormals();
+            console.log("subdividing stage 1");
+            LoopSubdivision.modify(plane.geometry, 1, {
+                preserveEdges: true,
+                flatOnly: true,
+            });
+            /* console.log("subdividing stage 2");
+            LoopSubdivision.modify(plane.geometry, 1, {
+                preserveEdges: true,
+                flatOnly: false,
+            }); */
+            console.log("done");
+            scene.add(plane);
+
+            quickBigLight(30, 30, 30);
+            quickBigLight(-30, 30, 30);
+            break;
+        }
+        case "bed": {
+            let img = options.img || NOTEXTURE;
+
+            camera.position.x = 14;
+            camera.position.y = 12;
+            camera.position.z = 7.5;
+            camera.fov = 40;
+            camera.updateProjectionMatrix();
+            camera.lookAt(-1, 3.5, 0);
+
+            let bed = await loadModel("models/bed.glb");
+            bed.rotation.y = -Math.PI / 2;
+            bed.position.y = 2;
+            let map = await loadTexture(img);
+            map.colorSpace = THREE.SRGBColorSpace;
+            map.flipY = false;
+            let material = new THREE.MeshStandardMaterial({
+                map,
+            });
+            let map2 = await loadTexture("images/bed_texture.png");
+            map2.colorSpace = THREE.SRGBColorSpace;
+            map2.flipY = false;
+            let material2 = new THREE.MeshStandardMaterial({
+                map: map2,
+            });
+            bed.castShadow = true;
+            bed.recieveShadow = true;
+            bed.children[0].material = material;
+            bed.children[1].material = material2;
+            bed.children[0].castShadow = true;
+            bed.children[1].castShadow = true;
+            bed.children[0].receiveShadow = true;
+            bed.children[1].receiveShadow = true;
+            scene.add(bed);
+
+            let ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(30, 30),
+                new THREE.MeshStandardMaterial({
+                    color: 0xe6f1f2,
+                })
+            );
+            ground.receiveShadow = true;
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+            let wall1 = new THREE.Mesh(
+                new THREE.PlaneGeometry(20, 15),
+                new THREE.MeshStandardMaterial({
+                    color: 0x66ddff,
+                })
+            );
+            wall1.position.y = 7;
+            wall1.position.z = -6;
+            wall1.receiveShadow = true;
+            scene.add(wall1);
+            let wall2 = new THREE.Mesh(
+                new THREE.PlaneGeometry(21, 15),
+                new THREE.MeshStandardMaterial({
+                    color: 0x66ddff,
+                })
+            );
+            wall2.position.y = 7;
+            wall2.position.x = -7;
+            wall2.receiveShadow = true;
+            wall2.rotation.y = Math.PI / 2;
+            scene.add(wall2);
+
+            quickLight(10, 7, 7);
+            quickLight(0, 10, 0);
+            quickLight(15, 3, 1);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+            break;
+        }
+        case "pokeball": {
+            let img = options.img || NOTEXTURE;
+
+            camera.position.x = 18;
+            camera.position.y = 21;
+            camera.position.z = 30;
+            camera.fov = 30;
+            camera.updateProjectionMatrix();
+            camera.lookAt(0, 5, 0);
+
+            let map = await loadTexture(img);
+            map.colorSpace = THREE.SRGBColorSpace;
+            map.flipY = true;
+            let material = new THREE.MeshStandardMaterial({
+                map,
+                transparent: true,
+            });
+            let image = new THREE.Mesh(new THREE.PlaneGeometry(5, 5), material);
+            image.position.y = 4;
+            scene.add(image);
+
+            let pokeball = await loadModel("models/pokeball.glb");
+            pokeball.position.y = 4;
+            pokeball.scale.x = pokeball.scale.y = pokeball.scale.z = 2;
+            scene.add(pokeball);
+            let top = pokeball.children.find(
+                (child) => child.name == "PokeBallTop"
+            );
+
+            let ground = new THREE.Mesh(
+                new THREE.PlaneGeometry(999, 999),
+                new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                })
+            );
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+
+            scene.background = new THREE.Color(0x606060);
+            scene.fog = new THREE.Fog(0x606060, 90, 100);
+
+            quickBigLight(50, 50, 0);
+            quickBigLight(50, 30, 30);
+            quickBigLight(-50, 30, 30);
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.1));
+
+            stepFunction = (pokeballOpen = 0, fov = 30, cx = 18) => {
+                if (pokeballOpen == -1) return;
+                top.rotation.x = -pokeballOpen * Math.PI * 0.7;
+                camera.position.x = cx;
+                camera.lookAt(0, 5, 0);
+                camera.fov = fov;
+                camera.updateProjectionMatrix();
+            };
+            break;
         }
     }
 
     lastID = id;
     renderer.render(scene, camera);
 
-    if (window.flapsWeb3DFinished) window.flapsWeb3DFinished(size[0], size[1]);
+    if (window.flapsWeb3DFinished)
+        window.flapsWeb3DFinished(renderer.domElement.toDataURL());
 }
 
 let stepFunction = () => {};
@@ -339,12 +853,20 @@ async function _step(...args) {
     stepFunction(...args);
     renderer.render(scene, camera);
     if (window.flapsWeb3DStepFinished) {
-        window.flapsWeb3DStepFinished(
-            resolutions[lastID][0],
-            resolutions[lastID][1]
-        );
+        window.flapsWeb3DStepFinished(renderer.domElement.toDataURL());
     }
 }
+
+window.flapsWeb3DDebugAnimation = () => {
+    let i = 0;
+    let a = () => {
+        i++;
+        stepFunction(i);
+        renderer.render(scene, camera);
+        requestAnimationFrame(a);
+    };
+    a();
+};
 
 window.flapsWeb3DStep = _step;
 window.flapsWeb3DInit = _init;

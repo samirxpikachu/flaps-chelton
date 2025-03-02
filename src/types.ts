@@ -1,4 +1,4 @@
-import { Message, TextBasedChannel } from "discord.js";
+import { Message, MessageComponent, TextBasedChannel, User } from "discord.js";
 
 export interface FlapsCommand {
     id: string;
@@ -21,6 +21,7 @@ export interface FlapsMessageCommandResponse {
     channel: TextBasedChannel;
     buffer: Buffer | null;
     filename: string | null;
+    components: MessageComponent[] | null;
 }
 export enum CommandResponseType {
     Message,
@@ -64,8 +65,8 @@ export interface CaptionOptions {
     fontsize: number;
 }
 export interface TrimOptions {
-    start: number;
-    end: number;
+    start: string;
+    end: string;
 }
 export interface SpeedOptions {
     speed: number;
@@ -81,6 +82,13 @@ export interface CropOptions {
     width: number;
     height: number;
     mode: "pixel" | "percent";
+}
+export interface FFmpegPercentUpdate {
+    percent: number;
+    fps: number;
+    time: string;
+    frame: number;
+    speed: number;
 }
 
 export interface RGBColor {
@@ -98,5 +106,134 @@ export interface AutoStatusInfo {
 export interface Web3DAnimation {
     step: (...args: any[]) => Promise<Buffer>;
     destroy: () => void;
-    lastFrame: Buffer;
+    lastFrame: () => Buffer;
+}
+
+export interface TTSSAMLine {
+    speed: number;
+    pitch: number;
+    text: string;
+}
+
+export enum TicTacToeCell {
+    Empty,
+    X,
+    O,
+}
+export type TicTacToeBoard = [
+    [TicTacToeCell, TicTacToeCell, TicTacToeCell],
+    [TicTacToeCell, TicTacToeCell, TicTacToeCell],
+    [TicTacToeCell, TicTacToeCell, TicTacToeCell]
+];
+export interface TicTacToeGame {
+    player1: User;
+    player2: User;
+    id: string;
+    nextPlace: TicTacToeCell;
+    board: TicTacToeBoard;
+    isOver: boolean;
+}
+
+export interface Battle {
+    pid: string;
+    mns: BattleMenuState;
+    lai: BattleLastAttackInfo;
+    id: string;
+    slf: BattleCreature;
+    enm: BattleCreature;
+    wt: BattleWaitingType;
+    so: BattleAction;
+}
+export interface BattleLastAttackInfo {
+    at: BattleAttack;
+    dmg: number;
+    ddr: number;
+    adr: number;
+}
+export enum BattleWaitingType {
+    PostAttackInfo,
+    PostEnemyAttackInfo,
+    Flee,
+    None,
+}
+export enum BattleMenuState {
+    Main,
+    ChooseAttack,
+    ChooseItem,
+    RunConfirm,
+    AttackConfirm,
+    Waiting,
+}
+export enum BattleAction {
+    Fight,
+    Item,
+    Run,
+    Option1,
+    Option2,
+    Option3,
+    Option4,
+    Option5,
+    Yes,
+    No,
+    Back,
+}
+export interface BattleCreature {
+    nm: string;
+    hp: number;
+    mhp: number;
+    df: number;
+    mdf: number;
+    at: number;
+    mat: number;
+    en: number;
+    fm: boolean;
+    lv: number;
+}
+export interface BattleAttack {
+    name: string;
+    description: string;
+    damage: number;
+    enemyDefenseDamage: number;
+    enemyAttackDamage: number;
+    selfDefenseBuff: number;
+    selfAttackBuff: number;
+    cost: number;
+}
+
+export interface Shoebill {
+    x: number;
+    y: number;
+    rotate: number;
+    scaleFactor: number;
+}
+
+export enum Connect4Cell {
+    Empty,
+    Red,
+    Blue,
+}
+export type Connect4Line = [
+    Connect4Cell,
+    Connect4Cell,
+    Connect4Cell,
+    Connect4Cell,
+    Connect4Cell,
+    Connect4Cell
+];
+export type Connect4Board = [
+    Connect4Line,
+    Connect4Line,
+    Connect4Line,
+    Connect4Line,
+    Connect4Line,
+    Connect4Line,
+    Connect4Line
+];
+export interface Connect4Game {
+    player1: User;
+    player2: User;
+    isPlayer2Turn: boolean;
+    board: Connect4Board;
+    isOver: boolean;
+    buttonWindow: number;
 }

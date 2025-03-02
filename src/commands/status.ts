@@ -8,43 +8,19 @@ module.exports = {
     id: "status",
     name: "Status",
     desc: "Sets Flaps' Discord status.",
-    execute(args, buf, msg) {
-        return new Promise((res, rej) => {
-            let statusData = args.join(" ");
-            let statusType =
-                ActivityType[
-                    statusData
-                        .split(" ")[0]
-                        .split("")
-                        .map((l, i) =>
-                            i == 0 ? l.toUpperCase() : l.toLowerCase()
-                        )
-                        .join("")
-                ];
-            let name = statusData.split(" ").slice(1).join(" ");
-            client.user?.setPresence({
-                activities: [
-                    {
-                        name,
-                        type: statusType,
-                        url: "https://konalt.us.to/",
-                    },
-                ],
-                afk: false,
-                status: "online",
-            });
-            writeFile(
-                "./saved_status.txt",
-                statusData
-                    .split(" ")[0]
-                    .split("")
-                    .map((l, i) => (i == 0 ? l.toUpperCase() : l.toLowerCase()))
-                    .join("") +
-                    " " +
-                    name
-            ).then(() => {
-                res(makeMessageResp("flaps", "i gotchu lmao"));
-            });
+    async execute(args) {
+        client.user?.setPresence({
+            activities: [
+                {
+                    name: "custom",
+                    type: ActivityType.Custom,
+                    state: args.join(" "),
+                },
+            ],
+            afk: false,
+            status: "online",
         });
+        await writeFile("./saved_status.txt", args.join(" "));
+        return makeMessageResp("flaps", "i gotchu lmao");
     },
 } satisfies FlapsCommand;

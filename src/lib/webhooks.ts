@@ -1,7 +1,10 @@
 import {
     Collection,
     DMChannel,
+    Embed,
+    EmbedBuilder,
     GuildChannel,
+    MessageComponent,
     NewsChannel,
     PartialDMChannel,
     PrivateThreadChannel,
@@ -19,13 +22,53 @@ import { log } from "./logger";
 import { users } from "./users";
 import { writeFile } from "fs/promises";
 import { file } from "./ffmpeg/ffmpeg";
+import { DOMAIN } from "..";
 
 const defaultContent = "No Content";
 const defaultUsername = "No Username";
 const defaultAvatar =
     "https://media.discordapp.net/attachments/838732607344214019/1075967910696210492/flapjpg.jpg";
 const defaultTTS = false;
-const maxFileSizeMiB = 25;
+const defaultComponents = [];
+const defaultEmbeds = [];
+const maxFileSizeMiB = 10;
+
+async function baseEdit(
+    url: string,
+    content: string = defaultContent,
+    username: string = defaultUsername,
+    avatar_url: string = defaultAvatar,
+    buf: Buffer | null = null,
+    filename: string | null = null,
+    components: MessageComponent[] = defaultComponents
+) {
+    let form = new FormData();
+    let attachments = [];
+    if (filename !== null) {
+        form.append("files[0]", buf, filename);
+        attachments = [
+            {
+                id: 0,
+                filename: filename,
+            },
+        ];
+    }
+    form.append(
+        "payload_json",
+        JSON.stringify({
+            content,
+            username,
+            avatar_url,
+            components,
+            attachments,
+        })
+    );
+    await fetch(url, {
+        method: "PATCH",
+        body: form,
+    });
+    return true;
+}
 
 function baseSend(
     url: string,
@@ -34,24 +77,53 @@ function baseSend(
     avatar_url: string = defaultAvatar,
     buf: Buffer | null = null,
     filename: string | null = null,
-    tts: boolean = defaultTTS
-) {
+    tts: boolean = defaultTTS,
+    components: MessageComponent[] = defaultComponents,
+    embeds: EmbedBuilder[] = defaultEmbeds
+): Promise<string> {
     let form = new FormData();
+    let attachments = [];
     if (filename !== null) {
-        form.append("file0", buf, filename);
+        form.append("files[0]", buf, filename);
+        attachments = [
+            {
+                id: 0,
+                filename: filename,
+            },
+        ];
+    } else if (content.length > 2000) {
+        form.append("files[1]", Buffer.from(content), "message.txt");
+        attachments = [
+            {
+                id: 1,
+                filename: "message.txt",
+            },
+        ];
+        content =
+            "The message was too long. Content is in the file message.txt.";
     }
+
     form.append(
         "payload_json",
         JSON.stringify({
-            content,
+            content: content,
             username,
             avatar_url,
             tts,
+            components,
+            attachments,
+            embeds,
         })
     );
-    fetch(url, {
-        method: "POST",
-        body: form,
+    return new Promise<string>((resolve, reject) => {
+        fetch(url, {
+            method: "POST",
+            body: form,
+        })
+            .then((r) => r.json())
+            .then((r) => {
+                resolve(r.id);
+            });
     });
 }
 
@@ -84,7 +156,6 @@ export let hooks: Collection<string, WebhookBot> = new Collection();
 
 export function updateUsers(): Promise<void> {
     return new Promise((res, rej) => {
-        log("Loading webhook bots...", "start");
         for (const user of users) {
             hooks.set(user.id, user);
         }
@@ -92,35 +163,101 @@ export function updateUsers(): Promise<void> {
     });
 }
 
-export function sendWebhook(
+export function editWebhookMessage(
+    messageID: string,
     id: string,
     content: string,
     channel: TextBasedChannel,
     buffer: Buffer | null = null,
-    filename: string | null = null
+    filename: string | null = null,
+    components: MessageComponent[] | null = null
 ) {
-    getWebhookURL(channel as TextChannel).then(async (url: string) => {
-        let user: WebhookBot = hooks.get(id);
-        // if file is over 8mb, send failsafe
-        if (buffer && Buffer.byteLength(buffer) > maxFileSizeMiB * 1.049e6) {
-            await writeFile(file("cache/" + filename), buffer).then(() => {
-                content +=
-                    "\nThis message originally contained a file, but the file was over " +
-                    maxFileSizeMiB +
-                    "MiB in size.\nLink: https://flaps.us.to/cache/" +
-                    filename +
-                    "\n*This link will expire in 6 hours.*";
+    return new Promise<void>((resolve, reject) => {
+        getWebhookURL(channel as TextChannel).then(async (url: string) => {
+            let user: WebhookBot = hooks.get(id);
+            // if file is over 8mb, send failsafe
+            if (
+                buffer &&
+                Buffer.byteLength(buffer) > maxFileSizeMiB * 1.049e6
+            ) {
+                await writeFile(file("cache/" + filename), buffer).then(() => {
+                    content +=
+                        "\nThis message originally contained a file, but the file was over " +
+                        maxFileSizeMiB +
+                        "MiB in size.\nLink: https://" +
+                        DOMAIN +
+                        "/cache/" +
+                        filename +
+                        "\n*This link will expire in 6 hours.*";
+                });
+                buffer = null;
+                filename = null;
+            }
+            let name = user?.name || "wh:" + id;
+            if (name == "flaps chelton") {
+                let flapsMember = await (
+                    channel as TextChannel
+                ).guild.members.fetchMe();
+                if (flapsMember.nickname) name = flapsMember.nickname;
+            }
+            baseEdit(
+                url + "/messages/" + messageID,
+                user?.quirk ? user?.quirk(content) : content,
+                name,
+                user?.avatar || "https://" + DOMAIN + "/avatar/" + id + ".webp",
+                buffer,
+                filename,
+                components
+            ).then(() => {
+                resolve();
             });
-            buffer = null;
-            filename = null;
-        }
-        baseSend(
-            url + "?wait=true",
-            user?.quirk ? user?.quirk(content) : content,
-            user?.name || "wh:" + id,
-            user?.avatar || "https://flaps.us.to/avatar/" + id + ".png",
-            buffer,
-            filename
-        );
+        });
     });
+}
+
+export async function sendWebhook(
+    id: string,
+    content: string,
+    channel: TextBasedChannel,
+    buffer: Buffer | null = null,
+    filename: string | null = null,
+    components: MessageComponent[] | null = null,
+    embeds: EmbedBuilder[] | null = null
+): Promise<string> {
+    const url = await getWebhookURL(channel as TextChannel);
+    let user: WebhookBot = hooks.get(id);
+    // if file is over 8mb, send failsafe
+    if (buffer && Buffer.byteLength(buffer) > maxFileSizeMiB * 1049000) {
+        await writeFile(file("cache/" + filename), buffer).then(() => {
+            content +=
+                "\nThis message originally contained a file, but the file was over " +
+                maxFileSizeMiB +
+                "MiB in size.\nLink: https://" +
+                DOMAIN +
+                "/cache/" +
+                filename +
+                "\n*This link will expire in 6 hours.*";
+        });
+        buffer = null;
+        filename = null;
+    }
+    let name = user?.name || "wh:" + id;
+    if (name == "flaps chelton") {
+        let flapsMember = await (
+            channel as TextChannel
+        ).guild.members.fetchMe();
+        if (flapsMember.nickname) name = flapsMember.nickname;
+    }
+    let msgid = await baseSend(
+        url + "?wait=true",
+        user?.quirk ? user?.quirk(content) : content,
+        name,
+        user?.avatar || "https://" + DOMAIN + "/avatar/" + id + ".webp",
+        buffer,
+        filename,
+        false,
+        components,
+        embeds
+    );
+    return msgid;
 }

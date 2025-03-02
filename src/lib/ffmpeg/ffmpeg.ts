@@ -1,14 +1,16 @@
 import { spawn } from "child_process";
 import { readFile, writeFileSync } from "fs";
 import { extension } from "mime-types";
-import { Color, esc, log } from "../logger";
+import { C, log } from "../logger";
 import { getFileExt, scheduleDelete, uuidv4 } from "../utils";
 import { join } from "path";
 import { stdout } from "process";
 import { addBuffer, removeBuffer } from "../..";
+import { FFmpegPercentUpdate } from "../../types";
+import os, { setPriority } from "os";
+import WebSocket from "ws";
 
 const extraArgs = "";
-const ffmpegVerbose = process.env.FFMPEG_VERBOSE == "yes";
 
 export const preset = "veryfast";
 
@@ -18,10 +20,10 @@ export function file(pathstr: string) {
 
 function getOutputFormat(ext: string) {
     if (ext == "png") {
-        return "-f image2 -c png";
+        return "-frames:v 1 -f image2 -c png";
     }
     if (ext == "jpeg" || ext == "jpg") {
-        return "-f image2 -c mjpeg";
+        return "-frames:v 1 -f image2 -c mjpeg";
     }
     if (ext == "mp4") {
         return "-pix_fmt yuv420p -f mp4 -movflags faststart+frag_keyframe+empty_moov";
@@ -32,15 +34,72 @@ function getOutputFormat(ext: string) {
 export function ffmpegBuffer(
     args: string,
     buffers: [Buffer, string][],
-    outExt?: string
+    outExt?: string,
+    forceVerbose = false,
+    updateFn: (update: FFmpegPercentUpdate) => void = () => {
+        void 0;
+    },
+    expectedResultLengthFrames = 1,
+    useServerIfAvailable = false
 ): Promise<Buffer> {
-    return new Promise<Buffer>((resolve, reject) => {
+    return new Promise<Buffer>(async (resolve, reject) => {
+        if (useServerIfAvailable) {
+            log("Connecting to FFmpeg server...", "ffmpeg");
+            let isAvailable = await fetch(
+                `${process.env.FLAPS_FFMPEG_SERVER_HEALTH_HOST}/health`,
+                { signal: AbortSignal.timeout(3000) }
+            )
+                .then(() => {
+                    return true;
+                })
+                .catch(() => {
+                    return false;
+                });
+            log("Server available: " + isAvailable, "ffmpeg");
+            if (isAvailable) {
+                const ws = new WebSocket(process.env.FLAPS_FFMPEG_SERVER_HOST);
+                ws.on("error", console.error);
+                ws.on("message", (data_str) => {
+                    let data = JSON.parse(data_str.toString());
+                    switch (data.type) {
+                        case "ready":
+                            ws.send(
+                                JSON.stringify({
+                                    type: "run",
+                                    args: args,
+                                    buffers: buffers,
+                                    outExt: outExt,
+                                    enableUpdateStreaming: !!updateFn,
+                                    expectedResultLengthFrames:
+                                        expectedResultLengthFrames,
+                                })
+                            );
+                            break;
+                        case "update":
+                            if (!!updateFn) {
+                                updateFn(data.update);
+                            }
+                            break;
+                        case "error":
+                            reject(data.detail);
+                            break;
+                        case "done":
+                            resolve(Buffer.from(data.buffer.data));
+                            break;
+                    }
+                });
+                return;
+            }
+        }
+        const ffmpegVerbose =
+            forceVerbose || process.env.FFMPEG_VERBOSE == "yes";
         if (!outExt) outExt = getFileExt(buffers[0][1]);
         outExt = outExt.toLowerCase();
-        let verbosityArg = ffmpegVerbose ? "-v debug" : "-v warning";
+        let verbosityArg =
+            !!updateFn || ffmpegVerbose ? "-v info" : "-v warning";
         let newargs = (
             verbosityArg +
-            " " +
+            " -hide_banner " +
             args
                 .replace(/\r?\n/g, "")
                 .replace(/\$PRESET/g, `${usePreset(outExt)}`)
@@ -58,18 +117,36 @@ export function ffmpegBuffer(
             return "http://localhost:56033/" + bufferNames[parseInt(b)];
         });
 
+        if (ffmpegVerbose) log(`Launch Args: ${C.White}` + newargs, "ffmpeg");
+
         const childProcess = spawn("ffmpeg", newargs.split(" "), {
             shell: true,
         });
         let chunkedOutput = [];
-        let errorLog = "";
+        let errorLog = "ARGS: ffmpeg " + newargs + "\n";
         childProcess.stdout.on("data", (chunk: Buffer) => {
             chunkedOutput.push(chunk);
         });
-        childProcess.stderr.on("data", (chunk: string) => {
+        childProcess.stderr.on("data", (chunk: Buffer) => {
             errorLog += chunk;
             if (ffmpegVerbose) {
                 process.stdout.write(chunk);
+            }
+            if (!!updateFn && chunk.toString().startsWith("frame=")) {
+                let pChunk = chunk.toString();
+                let frame = parseInt(pChunk.split("=")[1]);
+                let fps = parseFloat(pChunk.split("=")[2]);
+                let time = pChunk.split("=")[5].split(" ")[0];
+                let speed = parseFloat(pChunk.split("=")[7]);
+                let percent = (frame / expectedResultLengthFrames) * 100;
+                let update: FFmpegPercentUpdate = {
+                    fps,
+                    frame,
+                    time,
+                    speed,
+                    percent,
+                };
+                updateFn(update);
             }
         });
         childProcess.on("exit", (code) => {
@@ -155,6 +232,8 @@ const ffmpegLogRegex =
 export { ffmpegOldBuffer };
 export function ffmpeg(args: string, quiet = false) {
     return new Promise((resolve, reject) => {
+        const ffmpegVerbose = process.env.FFMPEG_VERBOSE == "yes";
+
         var startTime = Date.now();
         var newargs =
             extraArgs + " " + (ffmpegVerbose ? "" : "-v warning ") + args;
@@ -165,14 +244,10 @@ export function ffmpeg(args: string, quiet = false) {
                 shell: true,
             }
         );
-        if (ffmpegVerbose)
-            log(`Launch Args: ${esc(Color.White)}` + newargs, "ffmpeg");
+        if (ffmpegVerbose) log(`Launch Args: ${C.White}` + newargs, "ffmpeg");
         var b = "";
         if (!quiet)
-            log(
-                `${esc(Color.White)}Instance PID: ${ffmpegInstance.pid}`,
-                "ffmpeg"
-            );
+            log(`${C.White}Instance PID: ${ffmpegInstance.pid}`, "ffmpeg");
         let outChunked = [];
         ffmpegInstance.stdout.on("data", (c) => {
             outChunked.push(c);
@@ -185,18 +260,18 @@ export function ffmpeg(args: string, quiet = false) {
             let outBuffer = Buffer.concat(outChunked);
             if (code == 0 && !quiet) {
                 log(
-                    `${esc(Color.Green)}Completed ${esc(Color.White)}in ${esc(
-                        Color.BrightCyan
-                    )}${Date.now() - startTime}ms`,
+                    `${C.Green}Completed ${C.White}in ${C.BCyan}${
+                        Date.now() - startTime
+                    }ms`,
                     "ffmpeg"
                 );
                 resolve(args.split(" ").pop());
             } else {
                 if (!quiet)
                     log(
-                        `${esc(Color.Red)}Failed ${esc(Color.White)}in ${esc(
-                            Color.BrightCyan
-                        )}${Date.now() - startTime}ms`,
+                        `${C.Red}Failed ${C.White}in ${C.BCyan}${
+                            Date.now() - startTime
+                        }ms`,
                         "ffmpeg"
                     );
                 reject(b);
@@ -210,6 +285,7 @@ export async function ffprobe(
     buffer: [Buffer, string]
 ): Promise<string> {
     return new Promise(async (resolve, reject) => {
+        const ffmpegVerbose = process.env.FFMPEG_VERBOSE == "yes";
         var quiet = false;
         var startTime = Date.now();
         let inFile = addBuffer(buffer[0], getFileExt(buffer[1]));
@@ -227,18 +303,18 @@ export async function ffprobe(
         ffmpegInstance.on("exit", (code) => {
             removeBuffer(inFile);
             if (code == 0 && !quiet) {
-                if (!quiet)
+                if (!quiet && ffmpegVerbose)
                     log(
-                        `${esc(Color.Green)}Completed in ${esc(
-                            Color.BrightCyan
-                        )}${Date.now() - startTime}ms`,
+                        `${C.Green}Completed in ${C.BCyan}${
+                            Date.now() - startTime
+                        }ms`,
                         "ffprobe"
                     );
                 resolve(body);
             } else {
-                if (!quiet)
+                if (!quiet && ffmpegVerbose)
                     log(
-                        `${esc(Color.Red)}Failed in ${esc(Color.BrightCyan)}${
+                        `${C.Red}Failed in ${C.BCyan}${
                             Date.now() - startTime
                         }ms`,
                         "ffprobe"
@@ -257,10 +333,22 @@ export function usePreset(filename: string) {
     return "";
 }
 
+export function autoGifPalette(
+    in_specifier: string,
+    out_specifier: string,
+    format: string
+) {
+    if (format == "gif") {
+        return gifPalette(in_specifier, out_specifier);
+    } else {
+        return `[${in_specifier}]null[${out_specifier}]`;
+    }
+}
+
 export function gifPalette(in_specifier: string, out_specifier: string) {
     return `[${in_specifier}]split[${in_specifier}_pgen_${out_specifier}][${in_specifier}_puse_${out_specifier}];
     [${in_specifier}_pgen_${out_specifier}]palettegen[${in_specifier}_palette_${out_specifier}];
-    [${in_specifier}_puse_${out_specifier}][${in_specifier}_palette_${out_specifier}]paletteuse[${out_specifier}];`;
+    [${in_specifier}_puse_${out_specifier}][${in_specifier}_palette_${out_specifier}]paletteuse[${out_specifier}]`;
 }
 
 export const DEFAULTFORMAT = {

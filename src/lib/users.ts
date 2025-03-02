@@ -1,5 +1,4 @@
 import { WebhookBot } from "../types";
-import owoify from "owoify-js";
 import { sample } from "./utils";
 
 export const users: WebhookBot[] = [
@@ -378,9 +377,6 @@ export const users: WebhookBot[] = [
     {
         id: "ghost",
         name: "Ghost (separate from machine)",
-        quirk(x) {
-            return owoify(x, "uvu");
-        },
     },
     {
         id: "monsoon",
@@ -425,10 +421,6 @@ export const users: WebhookBot[] = [
     {
         id: "neco",
         name: "racist cat",
-    },
-    {
-        id: "tasquem",
-        name: "dommy mommy catgirl",
     },
     {
         id: "funo",
@@ -499,10 +491,6 @@ export const users: WebhookBot[] = [
         name: "saul",
     },
     {
-        id: "brimmy",
-        name: "briston elementalo",
-    },
-    {
         id: "goofygabe",
         name: "and why he goufy",
     },
@@ -530,18 +518,6 @@ export const users: WebhookBot[] = [
         },
     },
     {
-        id: "bee",
-        name: "bee girl",
-    },
-    {
-        id: "tree",
-        name: "tree girl",
-    },
-    {
-        id: "moth",
-        name: "funny moth",
-    },
-    {
         id: "howard",
         name: "howar hamin",
     },
@@ -556,14 +532,6 @@ export const users: WebhookBot[] = [
                 })
                 .join(" ");
         },
-    },
-    {
-        id: "chuchu",
-        name: "chuchu (the better one)",
-    },
-    {
-        id: "bonbon",
-        name: "bonbon",
     },
     {
         id: "politics",
@@ -705,27 +673,11 @@ export const users: WebhookBot[] = [
     },
     {
         id: "j",
-        name: "tacticola wielding dommy robot",
+        name: "cereal destination j",
     },
     {
         id: "lemmy",
         name: "LEMMY LEMMTON THE LEMMCORD BOT",
-    },
-    {
-        id: "cadence",
-        name: "the ginger from that rhythm game",
-    },
-    {
-        id: "sandwoman",
-        name: "sand elemental",
-    },
-    {
-        id: "cloudwoman",
-        name: "cloud elemental",
-    },
-    {
-        id: "waterwoman",
-        name: "water elemental",
     },
     {
         id: "bigboss",
@@ -753,16 +705,8 @@ export const users: WebhookBot[] = [
         },
     },
     {
-        id: "peni",
-        name: 'peni "corkagh" parker',
-    },
-    {
         id: "confucius",
         name: "Kong Fuzi",
-    },
-    {
-        id: "hornet",
-        name: "hornet",
     },
     {
         id: "jordan",
@@ -842,7 +786,7 @@ export const users: WebhookBot[] = [
             let words = content.split(" ");
             for (let i = 0; i < words.length / 5; i++) {
                 words.splice(
-                    ((words.length + 1) * Math.random()) || 0,
+                    (words.length + 1) * Math.random() || 0,
                     0,
                     `(${sample(farts)})`
                 );
@@ -853,7 +797,7 @@ export const users: WebhookBot[] = [
     },
     {
         id: "tessa",
-        name: "hollow knight shadewife",
+        name: "tassy",
     },
     {
         id: "vodka",
@@ -866,6 +810,426 @@ export const users: WebhookBot[] = [
     {
         id: "chrome",
         name: "marketshare dominator",
+    },
+    {
+        id: "octavia",
+        name: "Octavia",
+    },
+    {
+        id: "lute",
+        name: "lute <3",
+    },
+    {
+        id: "kate",
+        name: "kate the chaser",
+    },
+    {
+        id: "slenderman",
+        name: "the slenderman",
+    },
+    {
+        id: "sketchbook",
+        name: "sketchbook dhmis",
+    },
+    {
+        id: "yellowguy",
+        name: "yellow guy",
+    },
+    {
+        id: "redguy",
+        name: "red guy",
+    },
+    {
+        id: "duckguy",
+        name: "duck guy",
+    },
+    {
+        id: "tony",
+        name: "tony the 'talking' clock",
+    },
+    {
+        id: "shrignold",
+        name: "Shrignold (Little Baby Pigeon)",
+    },
+    {
+        id: "colin",
+        name: "colin the computery guy",
+    },
+    {
+        id: "steakguy",
+        name: "somewhat humanoid steak",
+    },
+    {
+        id: "lamp",
+        name: "the legful lamp",
+    },
+    {
+        id: "roy",
+        name: "roy gribbleston",
+    },
+    {
+        id: "briefcase",
+        name: "the briefcase",
+    },
+    {
+        id: "coffin",
+        name: "floorboard person",
+    },
+    {
+        id: "warren",
+        name: "AN EAGLE (NOT A WORM)",
+    },
+    {
+        id: "lily",
+        name: "Lily",
+    },
+    {
+        id: "todney",
+        name: "Todney",
+    },
+    {
+        id: "choochoo",
+        name: "Choo Choo",
+    },
+    {
+        id: "electracey",
+        name: "elecwifey",
+    },
+    {
+        id: "peridot",
+        name: "peridot",
+    },
+    {
+        id: "kalahari",
+        name: "Kalahari",
+    },
+    {
+        id: "blitzo",
+        name: "Blitzø",
+    },
+    {
+        id: "fizz",
+        name: "Fizzarolli",
+    },
+    {
+        id: "loona",
+        name: "Loona",
+    },
+    {
+        id: "millie",
+        name: "Millie",
+    },
+    {
+        id: "moxxie",
+        name: "Moxxie",
+    },
+    {
+        id: "ozzie",
+        name: "Asmodeus",
+    },
+    {
+        id: "stolas",
+        name: "Stolas",
+    },
+    {
+        id: "goodra",
+        name: "Goodra!",
+        /* quirk: (text) => {
+            return text
+                .split(" ")
+                .map((w) => {
+                    return "goodra";
+                })
+                .join(" ");
+        }, */
+    },
+    {
+        id: "greninja",
+        name: "Greninja",
+    },
+    {
+        id: "wartortle",
+        name: "Wartortle",
+    },
+    {
+        id: "fonthillhorse",
+        name: "the fonthill horse",
+    },
+    {
+        id: "magic8ball",
+        name: "magic ⑨ ball",
+    },
+    {
+        id: "gangle",
+        name: "gangle",
+    },
+    {
+        id: "wisetree",
+        name: "wise mystical darkwood tree",
+    },
+    {
+        id: "nc7",
+        name: "NC.7",
+    },
+    {
+        id: "stella",
+        name: "Stella",
+    },
+    {
+        id: "humansketch",
+        name: "humie sketchbook",
+    },
+    {
+        id: "ufo",
+        name: "mysterious ufo",
+    },
+    {
+        id: "snivy",
+        name: "smugleaf",
+    },
+    {
+        id: "reimu",
+        name: "Reimu Hakurei",
+    },
+    {
+        id: "marisa",
+        name: "Marisa Kirisame",
+    },
+    {
+        id: "rumia",
+        name: "Rumia",
+    },
+    {
+        id: "daiyousei",
+        name: "Daiyousei",
+    },
+    {
+        id: "cirno",
+        name: "Cirno ⑨",
+    },
+    {
+        id: "china",
+        name: "Hong Meiling",
+    },
+    {
+        id: "koakuma",
+        name: "Koakuma",
+    },
+    {
+        id: "patchouli",
+        name: "Patchouli Knowledge",
+    },
+    {
+        id: "sakuya",
+        name: "Sakuya Izayoi",
+    },
+    {
+        id: "remilia",
+        name: "Remilia Scarlet",
+    },
+    {
+        id: "flandre",
+        name: "Flandre Scarlet",
+    },
+    {
+        id: "letty",
+        name: "Letty Whiterock",
+    },
+    {
+        id: "chen",
+        name: "Chen",
+    },
+    {
+        id: "lilywhite",
+        name: "Lily White",
+    },
+    {
+        id: "lyrica",
+        name: "Lyrica Prismriver",
+    },
+    {
+        id: "lunasa",
+        name: "Lunasa Prismriver",
+    },
+    {
+        id: "merlin",
+        name: "Merlin Prismriver",
+    },
+    {
+        id: "youmu",
+        name: "Youmu Konpaku",
+    },
+    {
+        id: "yuyuko",
+        name: "Yuyuko Saigyouji",
+    },
+    {
+        id: "ran",
+        name: "Ran Yakumo",
+    },
+    {
+        id: "yukari",
+        name: "Yukari Yakumo",
+    },
+    {
+        id: "alicemargatroid",
+        name: "Alice Margatroid",
+    },
+    {
+        id: "wriggle",
+        name: "Wriggle Nightbug",
+    },
+    {
+        id: "mystia",
+        name: "Mystia Lorelei",
+    },
+    {
+        id: "keine",
+        name: "Keine Kamishirasawa",
+    },
+    {
+        id: "tewi",
+        name: "Tewi Inaba",
+    },
+    {
+        id: "reisen",
+        name: "Reisen Udongein Inaba",
+    },
+    {
+        id: "eirin",
+        name: "Eirin Yagokoro",
+    },
+    {
+        id: "kaguya",
+        name: "Kaguya Houraisan",
+    },
+    {
+        id: "mokou",
+        name: "Fujiwara no Mokou",
+    },
+    {
+        id: "aya",
+        name: "Aya Shameimaru",
+    },
+    {
+        id: "eiki",
+        name: "Eiki Shiki, Yamaxanadu",
+    },
+    {
+        id: "shizuha",
+        name: "Shizuha Aki",
+    },
+    {
+        id: "minoriko",
+        name: "Minoriko Aki",
+    },
+    {
+        id: "hina",
+        name: "Hina Kagiyama",
+    },
+    {
+        id: "nitori",
+        name: "Nitori Kawashiro",
+    },
+    {
+        id: "momiji",
+        name: "Momiji Inubashiri",
+    },
+    {
+        id: "sanae",
+        name: "Sanae Kochiya",
+    },
+    {
+        id: "kanako",
+        name: "Kanako Yasaka",
+    },
+    {
+        id: "suwako",
+        name: "Suwako Moriya",
+    },
+    {
+        id: "kisume",
+        name: "Kisume",
+    },
+    {
+        id: "yamame",
+        name: "Yamame Kurodani",
+    },
+    {
+        id: "parsee",
+        name: "Parsee Mizuhashi",
+    },
+    {
+        id: "yuugi",
+        name: "Yuugi Hoshiguma",
+    },
+    {
+        id: "satori",
+        name: "Satori Komeiji",
+    },
+    {
+        id: "rin",
+        name: "Rin Kaenbyou",
+    },
+    {
+        id: "utsuho",
+        name: "Utsuho Reiuji",
+    },
+    {
+        id: "koishi",
+        name: "Koishi Komeiji",
+    },
+    {
+        id: "nazrin",
+        name: "Nazrin",
+    },
+    {
+        id: "kogasa",
+        name: "Kogasa Tatara",
+    },
+    {
+        id: "ichirin",
+        name: "Ichirin Kumoi",
+    },
+    {
+        id: "minamitsu",
+        name: "Minamitsu Murasa",
+    },
+    {
+        id: "sebastian",
+        name: "Sebastian Solace",
+    },
+    {
+        id: "eyefestation",
+        name: "Eyefestation",
+    },
+    {
+        id: "pandemonium",
+        name: "Pandemonium",
+    },
+    {
+        id: "crowzi",
+        name: "crowzi",
+    },
+    {
+        id: "s1clem",
+        name: "Clementine (Season 1)",
+    },
+    {
+        id: "s2clem",
+        name: "Clementine (Season 2)",
+    },
+    {
+        id: "s3clem",
+        name: "Clementine (Season 3)",
+    },
+    {
+        id: "s4clem",
+        name: "Clementine (Season 4)",
+    },
+    {
+        id: "miku",
+        name: "hatsune miku",
     },
 ];
 
